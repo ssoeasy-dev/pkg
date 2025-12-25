@@ -23,7 +23,7 @@ jobs:
         go-version: ${{ matrix.go-version }}
     
     - name: Run tests
-      working-directory: ./pkg/${{ matrix.package }}
+      working-directory: ${{ matrix.package }}
       run: |
         go mod tidy
         go test -v ./...

@@ -264,7 +264,12 @@ func (c *Consumer) handleMessage(ctx context.Context, msg amqp091.Delivery) {
 			return
 		}
 
-		msg.Ack(false)
+		if err := msg.Ack(false); err != nil {
+			c.log.Error(ctx, "Failed to ack message", map[string]any{
+				"error":      err,
+				"message_id": msg.MessageId,
+			})
+		}
 		return
 	}
 

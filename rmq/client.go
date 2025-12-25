@@ -25,7 +25,9 @@ func NewClient(log *logger.Logger, cfg *Config) (*Client, error) {
 
 	channel, err := conn.Channel()
 	if err != nil {
-		conn.Close()
+		if err := conn.Close(); err != nil {
+			return nil, fmt.Errorf("failed to close channel after failing open channel: %w", err)
+		}
 		return nil, fmt.Errorf("failed to open channel: %w", err)
 	}
 
@@ -49,7 +51,9 @@ func (c *Client) Channel() *amqp091.Channel {
 
 func (c *Client) Close() error {
 	if c.channel != nil {
-		c.channel.Close()
+		if err := c.channel.Close(); err != nil {
+			return fmt.Errorf("failed to close channel: %w", err)
+		}
 	}
 	if c.conn != nil {
 		return c.conn.Close()
@@ -74,7 +78,9 @@ func (c *Client) Reconnect() error {
 
 	channel, err := conn.Channel()
 	if err != nil {
-		conn.Close()
+		if err := conn.Close(); err != nil {
+			return fmt.Errorf("failed to close channel after reconnect: %w", err)
+		}
 		return fmt.Errorf("failed to open channel: %w", err)
 	}
 

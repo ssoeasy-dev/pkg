@@ -184,9 +184,20 @@ func (c *Consumer) handleMessage(ctx context.Context, msg amqp091.Delivery) {
 					"error":      err,
 					"message_id": msg.MessageId,
 				})
-				msg.Nack(false, false)
+				if err := msg.Nack(false, false); err != nil {
+					c.log.Error(ctx, "Failed to nack message", map[string]any{
+						"error":      err,
+						"message_id": msg.MessageId,
+					})
+				}
+
 			} else {
-				msg.Ack(false)
+				if err := msg.Ack(false); err != nil {
+					c.log.Error(ctx, "Failed to ack message", map[string]any{
+						"error":      err,
+						"message_id": msg.MessageId,
+					})
+				}
 			}
 			return
 		}
@@ -203,9 +214,19 @@ func (c *Consumer) handleMessage(ctx context.Context, msg amqp091.Delivery) {
 					"error":      err,
 					"message_id": msg.MessageId,
 				})
-				msg.Nack(false, false)
+				if err := msg.Nack(false, false); err != nil {
+					c.log.Error(ctx, "Failed to nack message", map[string]any{
+						"error":      err,
+						"message_id": msg.MessageId,
+					})
+				}
 			} else {
-				msg.Ack(false)
+				if err := msg.Ack(false); err != nil {
+					c.log.Error(ctx, "Failed to ack message", map[string]any{
+						"error":      err,
+						"message_id": msg.MessageId,
+					})
+				}
 			}
 			return
 		}
@@ -226,9 +247,19 @@ func (c *Consumer) handleMessage(ctx context.Context, msg amqp091.Delivery) {
 					"error":      err,
 					"message_id": msg.MessageId,
 				})
-				msg.Nack(false, false)
+				if err := msg.Nack(false, false); err != nil {
+					c.log.Error(ctx, "Failed to nack message", map[string]any{
+						"error":      err,
+						"message_id": msg.MessageId,
+					})
+				}
 			} else {
-				msg.Ack(false)
+				if err := msg.Ack(false); err != nil {
+					c.log.Error(ctx, "Failed to ack message", map[string]any{
+						"error":      err,
+						"message_id": msg.MessageId,
+					})
+				}
 			}
 			return
 		}

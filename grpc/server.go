@@ -23,6 +23,11 @@ func NewServer(addr string, log *logger.Logger) *Server {
 			traceIDInterceptor(),
 			requestIDInterceptor(),
 			loggingInterceptor(log),
+			recoveryInterceptor(log),
+
+		),
+		goGrpc.ChainStreamInterceptor(
+			streamRecoveryInterceptor(log),
 		),
 	)
 

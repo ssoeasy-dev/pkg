@@ -2,10 +2,11 @@ package grpc
 
 import (
 	"context"
+	"runtime/debug"
 	"time"
 
-	"github.com/ssoeasy-dev/pkg/logger"
 	"github.com/google/uuid"
+	"github.com/ssoeasy-dev/pkg/logger"
 	goGrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -13,7 +14,7 @@ import (
 )
 
 const (
-	HeaderTraceID = "x-trace-id"
+	HeaderTraceID   = "x-trace-id"
 	HeaderRequestID = "x-request-id"
 )
 
@@ -102,5 +103,46 @@ func loggingInterceptor(log *logger.Logger) goGrpc.UnaryServerInterceptor {
 		}
 
 		return resp, err
+	}
+}
+
+func recoveryInterceptor(log *logger.Logger) goGrpc.UnaryServerInterceptor {
+	return func(
+		ctx context.Context,
+		req interface{},
+		info *goGrpc.UnaryServerInfo,
+		handler goGrpc.UnaryHandler,
+	) (resp interface{}, err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error(ctx, "panic recovered", map[string]any{
+					"recover": r,
+					"stack":   string(debug.Stack()),
+				})
+
+				err = status.Errorf(codes.Internal, "internal server error")
+			}
+		}()
+
+		return handler(ctx, req)
+	}
+}
+
+func streamRecoveryInterceptor(log *logger.Logger) goGrpc.StreamServerInterceptor {
+	return func(
+		srv interface{},
+		stream goGrpc.ServerStream,
+		info *goGrpc.StreamServerInfo,
+		handler goGrpc.StreamHandler,
+	) error {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error(stream.Context(), "panic recovered", map[string]any{
+					"recover": r,
+					"stack":   string(debug.Stack()),
+				})
+			}
+		}()
+		return handler(srv, stream)
 	}
 }

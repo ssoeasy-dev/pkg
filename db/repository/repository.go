@@ -27,6 +27,8 @@ type Repository[Model any] interface {
 	FindAll(ctx context.Context, opts ...RepositoryOption) ([]Model, error)
 	Count(ctx context.Context, opts ...RepositoryOption) (int64, error)
 	Exists(ctx context.Context, opts ...RepositoryOption) (bool, error)
+
+	DB(ctx context.Context) *gorm.DB
 	
 	// Базовые опции для построения запросов
 	WithConditions(conditions ...interface{}) RepositoryOption
@@ -54,14 +56,14 @@ func NewRepository[Model any](txManager tx.TxManager, log *logger.Logger, entity
 	}
 }
 
-func (r *repository[Model]) getDB(ctx context.Context) *gorm.DB {
+func (r *repository[Model]) DB(ctx context.Context) *gorm.DB {
 	return r.txManager.GetDB(ctx)
 }
 
 // Create создает новую запись
 func (r *repository[Model]) Create(ctx context.Context, value *Model, opts ...RepositoryOption) error {
-	db := r.getDB(ctx)
-	
+	db := r.DB(ctx)
+
 	// Применяем опции
 	for _, opt := range opts {
 		db = opt(db)
@@ -69,10 +71,6 @@ func (r *repository[Model]) Create(ctx context.Context, value *Model, opts ...Re
 	
 	err := db.Create(value).Error
 	if err != nil {
-		r.log.Debug(ctx, "Create error", map[string]any{
-			"entity": r.entityName,
-			"error":  err.Error(),
-		})
 		
 		if strings.Contains(err.Error(), "23505") { // Unique violation
 			return NewErrAlreadyExists(r.entityName)
@@ -88,7 +86,7 @@ func (r *repository[Model]) Create(ctx context.Context, value *Model, opts ...Re
 
 // Update обновляет запись
 func (r *repository[Model]) Update(ctx context.Context, ID uuid.UUID, updates map[string]any, opts ...RepositoryOption) error {
-	db := r.getDB(ctx)
+	db := r.DB(ctx)
 	
 	// Применяем опции
 	for _, opt := range opts {
@@ -107,7 +105,7 @@ func (r *repository[Model]) Update(ctx context.Context, ID uuid.UUID, updates ma
 
 // Delete удаляет запись
 func (r *repository[Model]) Delete(ctx context.Context, id uuid.UUID, force bool, opts ...RepositoryOption) error {
-	db := r.getDB(ctx)
+	db := r.DB(ctx)
 	
 	// Применяем опции
 	for _, opt := range opts {
@@ -131,7 +129,7 @@ func (r *repository[Model]) Delete(ctx context.Context, id uuid.UUID, force bool
 
 // FindOne ищет одну запись
 func (r *repository[Model]) FindOne(ctx context.Context, opts ...RepositoryOption) (*Model, error) {
-	db := r.getDB(ctx).Model(new(Model))
+	db := r.DB(ctx).Model(new(Model))
 	
 	// Применяем опции
 	for _, opt := range opts {
@@ -151,7 +149,7 @@ func (r *repository[Model]) FindOne(ctx context.Context, opts ...RepositoryOptio
 
 // FindAll ищет все записи
 func (r *repository[Model]) FindAll(ctx context.Context, opts ...RepositoryOption) ([]Model, error) {
-	db := r.getDB(ctx).Model(new(Model))
+	db := r.DB(ctx).Model(new(Model))
 	
 	// Применяем опции
 	for _, opt := range opts {
@@ -168,7 +166,7 @@ func (r *repository[Model]) FindAll(ctx context.Context, opts ...RepositoryOptio
 
 // Count подсчитывает количество записей
 func (r *repository[Model]) Count(ctx context.Context, opts ...RepositoryOption) (int64, error) {
-	db := r.getDB(ctx).Model(new(Model))
+	db := r.DB(ctx).Model(new(Model))
 	
 	// Применяем опции
 	for _, opt := range opts {

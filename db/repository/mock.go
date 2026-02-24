@@ -73,54 +73,54 @@ func (m *MockRepository[Model]) Exists(ctx context.Context, conditions map[strin
 
 // Helpers
 
-func (m *MockRepository[Model]) CreateErrAlreadyExists(ctx context.Context, entity string) {
-	m.On("Create", ctx, mock.Anything).Return(NewErrAlreadyExists(entity))
+func (m *MockRepository[Model]) CreateErrAlreadyExists(ctx context.Context) {
+	m.On("Create", ctx, mock.Anything).Return(ErrAlreadyExists)
 }
 
-func (m *MockRepository[Model]) CreateErrCreateFailed(ctx context.Context, entity string) {
-	m.On("Create", ctx, mock.Anything).Return(NewErrCreateFailed(entity))
+func (m *MockRepository[Model]) CreateErrCreateFailed(ctx context.Context) {
+	m.On("Create", ctx, mock.Anything).Return(ErrCreationFailed)
 }
 
-func (m *MockRepository[Model]) UpdateErrNotFound(ctx context.Context, entity string) {
-	m.On("Update", ctx, mock.Anything).Return(NewErrNotFound(entity))
+func (m *MockRepository[Model]) UpdateErrNotFound(ctx context.Context) {
+	m.On("Update", ctx, mock.Anything).Return(ErrNotFound)
 }
 
-func (m *MockRepository[Model]) UpdateErrUpdateFailed(ctx context.Context, entity string) {
-	m.On("Update", ctx, mock.Anything).Return(NewErrUpdateFailed(entity))
+func (m *MockRepository[Model]) UpdateErrUpdateFailed(ctx context.Context) {
+	m.On("Update", ctx, mock.Anything).Return(ErrUpdateFailed)
 }
 
-func (m *MockRepository[Model]) DeleteErrNotFound(ctx context.Context, entity string) {
-	m.On("Delete", ctx, mock.Anything).Return(NewErrNotFound(entity))
+func (m *MockRepository[Model]) DeleteErrNotFound(ctx context.Context) {
+	m.On("Delete", ctx, mock.Anything).Return(ErrNotFound)
 }
 
-func (m *MockRepository[Model]) DeleteErrDeleteFailed(ctx context.Context, entity string) {
-	m.On("Delete", ctx, mock.Anything).Return(NewErrDeleteFailed(entity))
+func (m *MockRepository[Model]) DeleteErrDeleteFailed(ctx context.Context) {
+	m.On("Delete", ctx, mock.Anything).Return(ErrDeleteFailed)
 }
 
-func (m *MockRepository[Model]) GetByIDErrNotFound(ctx context.Context, entity string) {
-	m.On("GetByID", ctx, mock.Anything).Return(NewErrNotFound(entity))
+func (m *MockRepository[Model]) GetByIDErrNotFound(ctx context.Context) {
+	m.On("GetByID", ctx, mock.Anything).Return(ErrNotFound)
 }
 
-func (m *MockRepository[Model]) GetByIDErrGetFailed(ctx context.Context, entity string) {
-	m.On("GetByID", ctx, mock.Anything).Return(NewErrGetFailed(entity))
+func (m *MockRepository[Model]) GetByIDErrGetFailed(ctx context.Context) {
+	m.On("GetByID", ctx, mock.Anything).Return(ErrGetFailed)
 }
 
-func (m *MockRepository[Model]) FindOneErrNotFound(ctx context.Context, entity string) {
-	m.On("FindOne", ctx, mock.Anything).Return(NewErrNotFound(entity))
+func (m *MockRepository[Model]) FindOneErrNotFound(ctx context.Context) {
+	m.On("FindOne", ctx, mock.Anything).Return(ErrNotFound)
 }
 
-func (m *MockRepository[Model]) FindOneErrGetFailed(ctx context.Context, entity string) {
-	m.On("FindOne", ctx, mock.Anything).Return(NewErrGetFailed(entity))
+func (m *MockRepository[Model]) FindOneErrGetFailed(ctx context.Context) {
+	m.On("FindOne", ctx, mock.Anything).Return(ErrGetFailed)
 }
 
-func (m *MockRepository[Model]) FindAllErrGetFailed(ctx context.Context, entity string) {
-	m.On("FindAll", ctx, mock.Anything).Return(NewErrGetFailed(entity))
+func (m *MockRepository[Model]) FindAllErrGetFailed(ctx context.Context) {
+	m.On("FindAll", ctx, mock.Anything).Return(ErrGetFailed)
 }
 
-func (m *MockRepository[Model]) CountErrGetFailed(ctx context.Context, entity string) {
-	m.On("Count", ctx, mock.Anything).Return(NewErrGetFailed(entity))
+func (m *MockRepository[Model]) CountErrGetFailed(ctx context.Context) {
+	m.On("Count", ctx, mock.Anything).Return(ErrGetFailed)
 }
 
-func (m *MockRepository[Model]) ExistsErrGetFailed(ctx context.Context, entity string) {
-	m.On("Exists", ctx, mock.Anything).Return(NewErrGetFailed(entity))
+func (m *MockRepository[Model]) ExistsErrGetFailed(ctx context.Context) {
+	m.On("Exists", ctx, mock.Anything).Return(ErrGetFailed)
 }

@@ -554,6 +554,6 @@ func (c *Consumer) initializeInfrastructure(ctx context.Context) error {
 	return nil
 }
 
-func UnmarshalMessage(data []byte, v interface{}) error {
+func UnmarshalMessage(data []byte, v any) error {
 	return json.Unmarshal(data, v)
 }

@@ -21,10 +21,10 @@ const (
 func traceIDInterceptor() goGrpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
-		req interface{},
+		req any,
 		info *goGrpc.UnaryServerInfo,
 		handler goGrpc.UnaryHandler,
-	) (interface{}, error) {
+	) (any, error) {
 		traceID := ""
 
 		if md, ok := metadata.FromIncomingContext(ctx); ok {
@@ -46,10 +46,10 @@ func traceIDInterceptor() goGrpc.UnaryServerInterceptor {
 func requestIDInterceptor() goGrpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
-		req interface{},
+		req any,
 		info *goGrpc.UnaryServerInfo,
 		handler goGrpc.UnaryHandler,
-	) (interface{}, error) {
+	) (any, error) {
 		requestID := ""
 
 		if md, ok := metadata.FromIncomingContext(ctx); ok {
@@ -71,10 +71,10 @@ func requestIDInterceptor() goGrpc.UnaryServerInterceptor {
 func loggingInterceptor(log *logger.Logger) goGrpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
-		req interface{},
+		req any,
 		info *goGrpc.UnaryServerInfo,
 		handler goGrpc.UnaryHandler,
-	) (interface{}, error) {
+	) (any, error) {
 		start := time.Now()
 
 		resp, err := handler(ctx, req)
@@ -109,10 +109,10 @@ func loggingInterceptor(log *logger.Logger) goGrpc.UnaryServerInterceptor {
 func recoveryInterceptor(log *logger.Logger) goGrpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
-		req interface{},
+		req any,
 		info *goGrpc.UnaryServerInfo,
 		handler goGrpc.UnaryHandler,
-	) (resp interface{}, err error) {
+	) (resp any, err error) {
 		defer func() {
 			if r := recover(); r != nil {
 				log.Error(ctx, "panic recovered", map[string]any{
@@ -130,7 +130,7 @@ func recoveryInterceptor(log *logger.Logger) goGrpc.UnaryServerInterceptor {
 
 func streamRecoveryInterceptor(log *logger.Logger) goGrpc.StreamServerInterceptor {
 	return func(
-		srv interface{},
+		srv any,
 		stream goGrpc.ServerStream,
 		info *goGrpc.StreamServerInfo,
 		handler goGrpc.StreamHandler,

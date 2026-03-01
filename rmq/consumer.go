@@ -1,6 +1,7 @@
 package rmq
 
 import (
+	"maps"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -26,15 +27,13 @@ type MessageHandler func(ctx context.Context, message []byte, routingKey string)
 type QueueConfig struct {
 	Queue          string
 	BindingPattern string
-	RoutingKey     string
 	Exchange       string
 	TTL            int
 }
 
 type DelayQueueConfig struct {
-	Queue    string
+	QueueConfig
 	MaxRetry int
-	TTL      int
 }
 
 type ConsumerConfig struct {
@@ -43,42 +42,105 @@ type ConsumerConfig struct {
 	Dead    *QueueConfig
 	Handler MessageHandler
 }
+
 type Consumer struct {
-	log       *logger.Logger
-	client    *Client
-	cfg       *ConsumerConfig
-	isStopped bool
-	stopOnce  sync.Once
-	stopped   chan struct{}
-	mu        sync.RWMutex
+	log            *logger.Logger
+	client         *Client
+	cfg            *ConsumerConfig
+	publishChannel *amqp091.Channel
+	isStopped      bool
+	stopOnce       sync.Once
+	stopped        chan struct{}
+	mu             sync.RWMutex
 }
 
-func NewConsumer(log *logger.Logger, client *Client, consumerCfg *ConsumerConfig) *Consumer {
+func NewConsumer(log *logger.Logger, client *Client, cfg *ConsumerConfig) (*Consumer, error) {
+	if cfg.Main.Queue == "" {
+		return nil, fmt.Errorf("main queue name is required")
+	}
+	if cfg.Main.Exchange == "" {
+		return nil, fmt.Errorf("main exchange is required")
+	}
+	if cfg.Main.BindingPattern == "" {
+		return nil, fmt.Errorf("main binding pattern is required")
+	}
+	if cfg.Handler == nil {
+		return nil, fmt.Errorf("handler is required")
+	}
+	if cfg.Delay != nil {
+		if cfg.Delay.Queue == "" {
+			return nil, fmt.Errorf("delay queue name is required")
+		}
+		if cfg.Delay.Exchange == "" {
+			return nil, fmt.Errorf("delay exchange is required")
+		}
+		if cfg.Delay.BindingPattern == "" {
+			return nil, fmt.Errorf("delay binding pattern is required")
+		}
+		if cfg.Delay.TTL <= 0 {
+			return nil, fmt.Errorf("delay TTL must be positive")
+		}
+		if cfg.Delay.MaxRetry <= 0 {
+			return nil, fmt.Errorf("delay MaxRetry must be positive")
+		}
+	}
+	if cfg.Dead != nil {
+		if cfg.Dead.Queue == "" {
+			return nil, fmt.Errorf("dead queue name is required")
+		}
+		if cfg.Dead.Exchange == "" {
+			return nil, fmt.Errorf("dead exchange is required")
+		}
+		if cfg.Dead.BindingPattern == "" {
+			return nil, fmt.Errorf("dead binding pattern is required")
+		}
+	}
+
 	return &Consumer{
 		log:       log,
 		client:    client,
-		cfg:       consumerCfg,
+		cfg:       cfg,
 		stopped:   make(chan struct{}),
 		isStopped: false,
-	}
+	}, nil
 }
 
 func (c *Consumer) Start(ctx context.Context) error {
-	if err := c.initializeInfrastructure(ctx); err != nil {
+	initChannel, err := c.client.conn.Channel()
+	if err != nil {
+		return fmt.Errorf("failed to open init channel: %w", err)
+	}
+	defer initChannel.Close()
+
+	if err := c.initializeInfrastructure(ctx, initChannel); err != nil {
 		return fmt.Errorf("failed to initialize RabbitMQ infrastructure: %w", err)
+	}
+
+	c.publishChannel, err = c.client.conn.Channel()
+	if err != nil {
+		return fmt.Errorf("failed to open publish channel: %w", err)
+	}
+
+	consumeChannel, err := c.client.conn.Channel()
+	if err != nil {
+		return fmt.Errorf("failed to open consume channel: %w", err)
+	}
+
+	if err := consumeChannel.Qos(1, 0, false); err != nil {
+		return fmt.Errorf("failed to set QoS: %w", err)
 	}
 
 	hostname, _ := os.Hostname()
 	consumerTag := fmt.Sprintf("%s-%d", hostname, os.Getpid())
 
-	msgs, err := c.client.Channel().Consume(
-		c.cfg.Main.Queue, // queue
-		consumerTag,      // consumer tag
-		false,            // auto-ack
-		false,            // exclusive
-		false,            // no-local
-		false,            // no-wait
-		nil,              // args
+	msgs, err := consumeChannel.Consume(
+		c.cfg.Main.Queue,
+		consumerTag,
+		false, // auto-ack
+		false, // exclusive
+		false, // no-local
+		false, // no-wait
+		nil,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to register consumer: %w", err)
@@ -165,6 +227,7 @@ func (c *Consumer) handleMessage(ctx context.Context, msg amqp091.Delivery) {
 
 	c.log.Info(ctx, "Received message", map[string]any{
 		"routing_key": msg.RoutingKey,
+		"message_id":  msg.MessageId,
 		"message":     string(msg.Body),
 	})
 
@@ -179,26 +242,7 @@ func (c *Consumer) handleMessage(ctx context.Context, msg amqp091.Delivery) {
 			c.log.Error(ctx, "Delay queue not set, sending to DLQ", map[string]any{
 				"message_id": msg.MessageId,
 			})
-			if err := c.publishToDLQ(ctx, msg, err, "delay_queue_not_configured"); err != nil {
-				c.log.Error(ctx, "Failed to publish message to DLQ, using standard dead-letter", map[string]any{
-					"error":      err,
-					"message_id": msg.MessageId,
-				})
-				if err := msg.Nack(false, false); err != nil {
-					c.log.Error(ctx, "Failed to nack message", map[string]any{
-						"error":      err,
-						"message_id": msg.MessageId,
-					})
-				}
-
-			} else {
-				if err := msg.Ack(false); err != nil {
-					c.log.Error(ctx, "Failed to ack message", map[string]any{
-						"error":      err,
-						"message_id": msg.MessageId,
-					})
-				}
-			}
+			c.sendToDLQOrNack(ctx, msg, err, "delay_queue_not_configured")
 			return
 		}
 
@@ -209,25 +253,7 @@ func (c *Consumer) handleMessage(ctx context.Context, msg amqp091.Delivery) {
 				"message_id":  msg.MessageId,
 				"retry_count": retryCount,
 			})
-			if err := c.publishToDLQ(ctx, msg, err, fmt.Sprintf("max_retries_exceeded:%d", retryCount)); err != nil {
-				c.log.Error(ctx, "Failed to publish message to DLQ, using standard dead-letter", map[string]any{
-					"error":      err,
-					"message_id": msg.MessageId,
-				})
-				if err := msg.Nack(false, false); err != nil {
-					c.log.Error(ctx, "Failed to nack message", map[string]any{
-						"error":      err,
-						"message_id": msg.MessageId,
-					})
-				}
-			} else {
-				if err := msg.Ack(false); err != nil {
-					c.log.Error(ctx, "Failed to ack message", map[string]any{
-						"error":      err,
-						"message_id": msg.MessageId,
-					})
-				}
-			}
+			c.sendToDLQOrNack(ctx, msg, err, fmt.Sprintf("max_retries_exceeded:%d", retryCount))
 			return
 		}
 
@@ -238,34 +264,33 @@ func (c *Consumer) handleMessage(ctx context.Context, msg amqp091.Delivery) {
 		})
 
 		if err := c.publishToDelayQueue(msg, newRetryCount, err); err != nil {
-			c.log.Error(ctx, "Failed to publish message to delay queue", map[string]any{
+			c.log.Error(ctx, "Failed to publish to delay queue, sending to DLQ", map[string]any{
 				"error":      err,
 				"message_id": msg.MessageId,
 			})
-			if err := c.publishToDLQ(ctx, msg, err, "failed_to_publish_to_delay_queue"); err != nil {
-				c.log.Error(ctx, "Failed to publish message to DLQ, using standard dead-letter", map[string]any{
-					"error":      err,
-					"message_id": msg.MessageId,
-				})
-				if err := msg.Nack(false, false); err != nil {
-					c.log.Error(ctx, "Failed to nack message", map[string]any{
-						"error":      err,
-						"message_id": msg.MessageId,
-					})
-				}
-			} else {
-				if err := msg.Ack(false); err != nil {
-					c.log.Error(ctx, "Failed to ack message", map[string]any{
-						"error":      err,
-						"message_id": msg.MessageId,
-					})
-				}
-			}
+			c.sendToDLQOrNack(ctx, msg, err, "failed_to_publish_to_delay_queue")
 			return
 		}
 
-		if err := msg.Ack(false); err != nil {
-			c.log.Error(ctx, "Failed to ack message", map[string]any{
+		c.ackMessage(ctx, msg)
+		return
+	}
+
+	c.ackMessage(ctx, msg)
+	c.log.Info(ctx, "Message processed successfully", map[string]any{
+		"routing_key": msg.RoutingKey,
+		"message_id":  msg.MessageId,
+	})
+}
+
+func (c *Consumer) sendToDLQOrNack(ctx context.Context, msg amqp091.Delivery, originalErr error, reason string) {
+	if err := c.publishToDLQ(ctx, msg, originalErr, reason); err != nil {
+		c.log.Error(ctx, "Failed to publish to DLQ, using standard dead-letter (nack)", map[string]any{
+			"error":      err,
+			"message_id": msg.MessageId,
+		})
+		if err := msg.Nack(false, false); err != nil {
+			c.log.Error(ctx, "Failed to nack message", map[string]any{
 				"error":      err,
 				"message_id": msg.MessageId,
 			})
@@ -273,15 +298,14 @@ func (c *Consumer) handleMessage(ctx context.Context, msg amqp091.Delivery) {
 		return
 	}
 
+	c.ackMessage(ctx, msg)
+}
+
+func (c *Consumer) ackMessage(ctx context.Context, msg amqp091.Delivery) {
 	if err := msg.Ack(false); err != nil {
-		c.log.Error(ctx, "Failed to acknowledge message", map[string]any{
+		c.log.Error(ctx, "Failed to ack message", map[string]any{
 			"error":      err,
 			"message_id": msg.MessageId,
-		})
-	} else {
-		c.log.Info(ctx, "Message processed successfully", map[string]any{
-			"routing_key": msg.RoutingKey,
-			"message_id":  msg.MessageId,
 		})
 	}
 }
@@ -292,13 +316,12 @@ func (c *Consumer) getRetryCount(headers amqp091.Table) int {
 	}
 
 	if retryCount, ok := headers[retryHeader]; ok {
-		if count, ok := retryCount.(int32); ok {
+		switch count := retryCount.(type) {
+		case int32:
 			return int(count)
-		}
-		if count, ok := retryCount.(int); ok {
+		case int:
 			return count
-		}
-		if count, ok := retryCount.(int64); ok {
+		case int64:
 			return int(count)
 		}
 	}
@@ -307,26 +330,17 @@ func (c *Consumer) getRetryCount(headers amqp091.Table) int {
 }
 
 func (c *Consumer) publishToDelayQueue(msg amqp091.Delivery, retryCount int, err error) error {
-	headers := make(amqp091.Table)
-	if msg.Headers != nil {
-		for k, v := range msg.Headers {
-			headers[k] = v
-		}
-	}
+	headers := make(amqp091.Table, len(msg.Headers))
+	maps.Copy(headers, msg.Headers)
 	headers[retryHeader] = retryCount
-
-	if msg.RoutingKey != "" {
-		headers["x-original-routing-key"] = msg.RoutingKey
-	}
 	if err != nil {
 		headers["x-reason"] = err.Error()
 	}
 
-	err = c.client.Channel().Publish(
-		"",                // exchange (пустой = прямая публикация в очередь)
-		c.cfg.Delay.Queue, // routing key (при пустом exchange = имя очереди)
-		false,             // mandatory
-		false,             // immediate
+	return c.publishChannel.Publish(
+		c.cfg.Delay.Exchange,
+		msg.RoutingKey,
+		false, false,
 		amqp091.Publishing{
 			Headers:      headers,
 			ContentType:  msg.ContentType,
@@ -335,32 +349,23 @@ func (c *Consumer) publishToDelayQueue(msg amqp091.Delivery, retryCount int, err
 			DeliveryMode: amqp091.Persistent,
 		},
 	)
-
-	return err
 }
 
 func (c *Consumer) prepareDLQHeaders(msg amqp091.Delivery, originalErr error, reason string) amqp091.Table {
-	headers := make(amqp091.Table)
-	if msg.Headers != nil {
-		for k, v := range msg.Headers {
-			headers[k] = v
-		}
+	headers := make(amqp091.Table, len(msg.Headers))
+	for k, v := range msg.Headers {
+		headers[k] = v
 	}
 
-	// Сохраняем оригинальный routing key
 	if msg.RoutingKey != "" {
 		headers["x-original-routing-key"] = msg.RoutingKey
 	}
-
-	// Добавляем информацию об ошибке
 	if originalErr != nil {
 		headers[errorReasonHeader] = originalErr.Error()
 	}
 	headers[dlqReasonHeader] = reason
 
-	// Сохраняем количество попыток, если было
-	retryCount := c.getRetryCount(msg.Headers)
-	if retryCount > 0 {
+	if retryCount := c.getRetryCount(msg.Headers); retryCount > 0 {
 		headers[retryHeader] = retryCount
 	}
 
@@ -374,11 +379,10 @@ func (c *Consumer) publishToDLQ(ctx context.Context, msg amqp091.Delivery, origi
 
 	headers := c.prepareDLQHeaders(msg, originalErr, reason)
 
-	err := c.client.Channel().Publish(
+	if err := c.publishChannel.Publish(
 		c.cfg.Dead.Exchange,
-		c.cfg.Dead.RoutingKey,
-		false,
-		false,
+		msg.RoutingKey,
+		false, false,
 		amqp091.Publishing{
 			Headers:      headers,
 			ContentType:  msg.ContentType,
@@ -386,17 +390,15 @@ func (c *Consumer) publishToDLQ(ctx context.Context, msg amqp091.Delivery, origi
 			MessageId:    msg.MessageId,
 			DeliveryMode: amqp091.Persistent,
 		},
-	)
-
-	if err != nil {
+	); err != nil {
 		return fmt.Errorf("failed to publish to DLQ: %w", err)
 	}
 
-	retryCount := c.getRetryCount(msg.Headers)
 	c.log.Info(ctx, "Message published to DLQ", map[string]any{
 		"message_id":     msg.MessageId,
+		"routing_key":    msg.RoutingKey,
 		"reason":         reason,
-		"retry_count":    retryCount,
+		"retry_count":    c.getRetryCount(msg.Headers),
 		"original_error": originalErr,
 	})
 
@@ -404,7 +406,6 @@ func (c *Consumer) publishToDLQ(ctx context.Context, msg amqp091.Delivery, origi
 }
 
 func (c *Consumer) reconnectAndRestart(ctx context.Context) error {
-
 	c.mu.RLock()
 	stopped := c.isStopped
 	c.mu.RUnlock()
@@ -430,99 +431,76 @@ func (c *Consumer) Stop() {
 	})
 }
 
-func (c *Consumer) initializeInfrastructure(ctx context.Context) error {
-	channel := c.client.Channel()
-
+func (c *Consumer) initializeInfrastructure(ctx context.Context, channel *amqp091.Channel) error {
 	// DEAD
 	if c.cfg.Dead != nil {
 		if err := channel.ExchangeDeclare(
 			c.cfg.Dead.Exchange,
-			"direct", // type
-			true,     // durable
-			false,    // auto-deleted
-			false,    // internal
-			false,    // no-wait
-			nil,      // arguments
+			"topic",
+			true, false, false, false, nil,
 		); err != nil {
 			return fmt.Errorf("failed to declare DLX exchange %s: %w", c.cfg.Dead.Exchange, err)
 		}
-		c.log.Info(ctx, "DLX Exchange declared", map[string]any{"exchange": c.cfg.Dead.Exchange})
+		c.log.Info(ctx, "DLX exchange declared", map[string]any{"exchange": c.cfg.Dead.Exchange})
 
-		_, err := channel.QueueDeclare(
+		if _, err := channel.QueueDeclare(
 			c.cfg.Dead.Queue,
-			true,  // durable
-			false, // delete when unused
-			false, // exclusive
-			false, // no-wait
-			nil,   // arguments
-		)
-		if err != nil {
+			true, false, false, false, nil,
+		); err != nil {
 			return fmt.Errorf("failed to declare DLQ %s: %w", c.cfg.Dead.Queue, err)
 		}
 		c.log.Info(ctx, "DLQ declared", map[string]any{"queue": c.cfg.Dead.Queue})
 
 		if err := channel.QueueBind(
-			c.cfg.Dead.Queue, // queue name
-			c.cfg.Dead.RoutingKey, // routing key
-			c.cfg.Dead.Exchange, // exchange name
-			false, // no-wait
-			nil,   // arguments
+			c.cfg.Dead.Queue,
+			c.cfg.Dead.BindingPattern,
+			c.cfg.Dead.Exchange,
+			false, nil,
 		); err != nil {
-			return fmt.Errorf("failed to bind DLQ %s to DLX %s: %w", c.cfg.Dead.Queue, c.cfg.Dead.Exchange, err)
+			return fmt.Errorf("failed to bind DLQ: %w", err)
 		}
 		c.log.Info(ctx, "DLQ bound to DLX", map[string]any{
-			"queue":       c.cfg.Dead.Queue,
-			"exchange":    c.cfg.Dead.Exchange,
-			"routing_key": c.cfg.Dead.RoutingKey,
+			"queue":           c.cfg.Dead.Queue,
+			"exchange":        c.cfg.Dead.Exchange,
+			"binding_pattern": c.cfg.Dead.BindingPattern,
 		})
 	}
 
 	// MAIN
 	if err := channel.ExchangeDeclare(
 		c.cfg.Main.Exchange,
-		"topic", // type
-		true,    // durable
-		false,   // auto-deleted
-		false,   // internal
-		false,   // no-wait
-		nil,     // arguments
+		"topic",
+		true, false, false, false, nil,
 	); err != nil {
-		return fmt.Errorf("failed to declare exchange %s: %w", c.cfg.Main.Exchange, err)
+		return fmt.Errorf("failed to declare main exchange %s: %w", c.cfg.Main.Exchange, err)
 	}
-	c.log.Info(ctx, "Exchange declared", map[string]any{"exchange": c.cfg.Main.Exchange})
+	c.log.Info(ctx, "Main exchange declared", map[string]any{"exchange": c.cfg.Main.Exchange})
 
-	table := amqp091.Table{
+	mainArgs := amqp091.Table{
 		"x-message-ttl":  int64(c.cfg.Main.TTL),
 		"x-max-priority": int32(10),
 	}
 	if c.cfg.Dead != nil {
-		table["x-dead-letter-exchange"] = c.cfg.Dead.Exchange // exchange name
-		table["x-dead-letter-routing-key"] = c.cfg.Dead.RoutingKey // routing key
+		mainArgs["x-dead-letter-exchange"] = c.cfg.Dead.Exchange
 	}
 
-	_, err := channel.QueueDeclare(
+	if _, err := channel.QueueDeclare(
 		c.cfg.Main.Queue,
-		true,  // durable
-		false, // delete when unused
-		false, // exclusive
-		false, // no-wait
-		table, // arguments
-	)
-	if err != nil {
-		return fmt.Errorf("failed to declare queue %s: %w", c.cfg.Main.Queue, err)
+		true, false, false, false, mainArgs,
+	); err != nil {
+		return fmt.Errorf("failed to declare main queue %s: %w", c.cfg.Main.Queue, err)
 	}
-	c.log.Info(ctx, "Queue declared", map[string]any{"queue": c.cfg.Main.Queue})
+	c.log.Info(ctx, "Main queue declared", map[string]any{"queue": c.cfg.Main.Queue})
 
 	if err := channel.QueueBind(
-		c.cfg.Main.Queue, // queue name
-		c.cfg.Main.BindingPattern, // binding pattern
-		c.cfg.Main.Exchange, // exchange name
-		false, // no-wait
-		nil,   // arguments
+		c.cfg.Main.Queue,
+		c.cfg.Main.BindingPattern,
+		c.cfg.Main.Exchange,
+		false, nil,
 	); err != nil {
-		return fmt.Errorf("failed to bind queue %s to exchange %s: %w", c.cfg.Main.Queue, c.cfg.Main.Exchange, err)
+		return fmt.Errorf("failed to bind main queue: %w", err)
 	}
-	c.log.Info(ctx, "Queue bound to exchange", map[string]any{
+	c.log.Info(ctx, "Main queue bound", map[string]any{
 		"queue":           c.cfg.Main.Queue,
 		"exchange":        c.cfg.Main.Exchange,
 		"binding_pattern": c.cfg.Main.BindingPattern,
@@ -530,25 +508,41 @@ func (c *Consumer) initializeInfrastructure(ctx context.Context) error {
 
 	// DELAY
 	if c.cfg.Delay != nil {
-		table := amqp091.Table{
-			"x-message-ttl": int64(c.cfg.Delay.TTL),
+		if err := channel.ExchangeDeclare(
+			c.cfg.Delay.Exchange,
+			"topic",
+			true, false, false, false, nil,
+		); err != nil {
+			return fmt.Errorf("failed to declare delay exchange %s: %w", c.cfg.Delay.Exchange, err)
 		}
-		if c.cfg.Dead != nil {
-			table["x-dead-letter-exchange"] = c.cfg.Main.Exchange // exchange name
-			table["x-dead-letter-routing-key"] = c.cfg.Main.RoutingKey // routing key
+		c.log.Info(ctx, "Delay exchange declared", map[string]any{"exchange": c.cfg.Delay.Exchange})
+
+		delayArgs := amqp091.Table{
+			"x-message-ttl":          int64(c.cfg.Delay.TTL),
+			"x-dead-letter-exchange": c.cfg.Main.Exchange,
 		}
-		_, err = channel.QueueDeclare(
+
+		if _, err := channel.QueueDeclare(
 			c.cfg.Delay.Queue,
-			true,  // durable
-			false, // delete when unused
-			false, // exclusive
-			false, // no-wait
-			table, // arguments
-		)
-		if err != nil {
+			true, false, false, false, delayArgs,
+		); err != nil {
 			return fmt.Errorf("failed to declare delay queue %s: %w", c.cfg.Delay.Queue, err)
 		}
 		c.log.Info(ctx, "Delay queue declared", map[string]any{"queue": c.cfg.Delay.Queue})
+
+		if err := channel.QueueBind(
+			c.cfg.Delay.Queue,
+			c.cfg.Delay.BindingPattern,
+			c.cfg.Delay.Exchange,
+			false, nil,
+		); err != nil {
+			return fmt.Errorf("failed to bind delay queue: %w", err)
+		}
+		c.log.Info(ctx, "Delay queue bound", map[string]any{
+			"queue":           c.cfg.Delay.Queue,
+			"exchange":        c.cfg.Delay.Exchange,
+			"binding_pattern": c.cfg.Delay.BindingPattern,
+		})
 	}
 
 	return nil

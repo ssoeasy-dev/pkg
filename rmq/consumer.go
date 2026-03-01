@@ -110,7 +110,14 @@ func (c *Consumer) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to open init channel: %w", err)
 	}
-	defer initChannel.Close()
+	defer func() {
+		err := initChannel.Close()
+		if err != nil {
+			c.log.Error(ctx, "Close init channel", map[string]any{
+				"error": err.Error(),
+			})
+		}
+	}()
 
 	if err := c.initializeInfrastructure(ctx, initChannel); err != nil {
 		return fmt.Errorf("failed to initialize RabbitMQ infrastructure: %w", err)

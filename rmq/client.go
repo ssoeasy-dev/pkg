@@ -70,24 +70,47 @@ func (c *Client) Reconnect() error {
 		c.log.Warn(ctx, "Error closing old connection", map[string]any{"error": err})
 	}
 
-	time.Sleep(2 * time.Second)
+	backoff := 2 * time.Second
+	const maxBackoff = 30 * time.Second
+	const maxAttempts = 10
 
-	conn, err := amqp091.Dial(c.cfg.URL())
-	if err != nil {
-		return fmt.Errorf("failed to reconnect: %w", err)
-	}
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		c.log.Info(ctx, "Reconnect attempt", map[string]any{
+			"attempt": attempt,
+			"max":     maxAttempts,
+		})
 
-	channel, err := conn.Channel()
-	if err != nil {
-		if err := conn.Close(); err != nil {
-			return fmt.Errorf("failed to close channel after reconnect: %w", err)
+		conn, err := amqp091.Dial(c.cfg.URL())
+		if err != nil {
+			c.log.Warn(ctx, "Reconnect failed, retrying", map[string]any{
+				"attempt": attempt,
+				"error":   err,
+				"backoff": backoff.String(),
+			})
+			time.Sleep(backoff)
+			if backoff < maxBackoff {
+				backoff *= 2
+			}
+			continue
 		}
-		return fmt.Errorf("failed to open channel: %w", err)
+
+		channel, err := conn.Channel()
+		if err != nil {
+			conn.Close()
+			time.Sleep(backoff)
+			if backoff < maxBackoff {
+				backoff *= 2
+			}
+			continue
+		}
+
+		c.conn = conn
+		c.channel = channel
+		c.log.Info(ctx, "RabbitMQ reconnected successfully", map[string]any{
+			"attempt": attempt,
+		})
+		return nil
 	}
 
-	c.conn = conn
-	c.channel = channel
-
-	c.log.Info(ctx, "RabbitMQ reconnected successfully", nil)
-	return nil
+	return fmt.Errorf("failed to reconnect after %d attempts", maxAttempts)
 }

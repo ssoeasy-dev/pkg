@@ -18,6 +18,7 @@ client, err := rmq.NewClient(log, &rmq.Config{
     Port:     5672,
     User:     "guest",
     Password: "guest",
+    VHost:    "/",
 })
 
 defer client.Close()

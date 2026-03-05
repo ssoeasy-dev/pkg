@@ -32,9 +32,10 @@ func NewClient(log *logger.Logger, cfg *Config) (*Client, error) {
 	}
 
 	log.Info(context.Background(), "RabbitMQ client connected", map[string]any{
-		"host": cfg.Host,
-		"port": cfg.Port,
-		"user": cfg.User,
+		"host":  cfg.Host,
+		"port":  cfg.Port,
+		"user":  cfg.User,
+		"vhost": cfg.VHost,
 	})
 
 	return &Client{

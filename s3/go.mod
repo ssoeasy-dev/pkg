@@ -1,4 +1,4 @@
-module s3
+module github.com/ssoeasy-dev/pkg/s3
 
 go 1.24.11
 

@@ -29,7 +29,7 @@ pkg/
 │   ├── consumer.go      # Consumer с retry, delay queue, DLQ
 │   └── go.mod
 └── s3/
-    ├── client.go        # S3 клиент: Put, Get, GetBytes, Head
+    ├── client.go        # S3 клиент: Put, Get, Head
     ├── config.go        # Config struct
     └── go.mod
 ```

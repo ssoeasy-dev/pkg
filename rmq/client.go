@@ -57,7 +57,9 @@ func (c *Client) Close() error {
 		}
 	}
 	if c.conn != nil {
-		return c.conn.Close()
+		if err := c.conn.Close(); err != nil {
+			return fmt.Errorf("failed to close channel: %w", err)
+		}
 	}
 	return nil
 }
@@ -96,7 +98,9 @@ func (c *Client) Reconnect() error {
 
 		channel, err := conn.Channel()
 		if err != nil {
-			conn.Close()
+			if err := conn.Close(); err != nil {
+				return fmt.Errorf("failed to close channel after failing reconnect: %w", err)
+			}
 			time.Sleep(backoff)
 			if backoff < maxBackoff {
 				backoff *= 2

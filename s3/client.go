@@ -40,7 +40,8 @@ func NewClient(cfg *Config) (*Client, error) {
 		if cfg.Endpoint != "" {
 			o.BaseEndpoint = aws.String(cfg.Endpoint)
 		}
-		o.ResponseChecksumValidation = aws.ResponseChecksumValidationUnset
+		o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+		o.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
 	})
 
 	return &Client{
@@ -125,11 +126,15 @@ func (c *Client) List(ctx context.Context, key string) ([]ListResult, error) {
 // Передайте пустую строку для получения полного объекта.
 // Вызывающий обязан закрыть Body у возвращённого объекта.
 func (c *Client) Get(ctx context.Context, obj *Object) (*io.ReadCloser, error) {
-	out, err := c.S3.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(c.bucket),
-		Key:    aws.String(obj.Key),
-		Range:  obj.Range,
-	})
+	input := &s3.GetObjectInput{
+        Bucket: aws.String(c.bucket),
+        Key:    aws.String(obj.Key),
+    }
+
+    if obj.Range != nil && *obj.Range != "" {
+        input.Range = obj.Range
+    }
+	out, err := c.S3.GetObject(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("s3: get %q: %w", obj.Key, err)
 	}

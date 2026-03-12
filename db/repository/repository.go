@@ -34,18 +34,23 @@ func NewRepository[Model any](txManager tx.TxManager, log *logger.Logger, Entity
 }
 
 func (r *repository[Model]) DB(ctx context.Context) *gorm.DB {
-	return r.txManager.GetDB(ctx)
+	db := r.txManager.GetDB(ctx)
+	if err := db.Statement.Parse(new(Model)); err != nil {
+		r.log.Error(ctx, "Model not parsed", map[string]any{
+			"error": err.Error(),
+		})
+	}
+	return db.Model(new(Model))
 }
 
 // Create создает новую запись
 func (r *repository[Model]) Create(ctx context.Context, value *Model, opts ...RepositoryOption) error {
 	db := r.DB(ctx)
 
-	// Применяем опции
 	for _, opt := range opts {
 		db = opt(db)
 	}
-	
+
 	err := db.Create(value).Error
 	if err != nil {
 		return NewRepositoryError(err, r.EntityName, ErrCreationFailed)
@@ -56,15 +61,33 @@ func (r *repository[Model]) Create(ctx context.Context, value *Model, opts ...Re
 // Update обновляет запись
 func (r *repository[Model]) Update(ctx context.Context, updates map[string]any, opts ...RepositoryOption) (int64, error) {
 	db := r.DB(ctx)
-	
-	// Применяем опции
+
 	for _, opt := range opts {
 		db = opt(db)
 	}
 
-	result := db.Model(new(Model)).Updates(updates)
+	result := db.Updates(updates)
 	if result.Error != nil {
 		return 0, NewRepositoryError(result.Error, r.EntityName, ErrUpdateFailed)
+	}
+	return result.RowsAffected, nil
+}
+
+// Delete удаляет запись
+func (r *repository[Model]) Delete(ctx context.Context, force bool, opts ...RepositoryOption) (int64, error) {
+	db := r.DB(ctx)
+
+	for _, opt := range opts {
+		db = opt(db)
+	}
+
+	if force {
+		db = db.Unscoped()
+	}
+
+	result := db.Delete(new(Model))
+	if result.Error != nil {
+		return 0, NewRepositoryError(result.Error, r.EntityName, ErrDeleteFailed)
 	}
 	if result.RowsAffected == 0 {
 		return 0, NewRepositoryError(gorm.ErrRecordNotFound, r.EntityName, ErrNotFound)
@@ -72,37 +95,14 @@ func (r *repository[Model]) Update(ctx context.Context, updates map[string]any, 
 	return result.RowsAffected, nil
 }
 
-// Delete удаляет запись
-func (r *repository[Model]) Delete(ctx context.Context, force bool, opts ...RepositoryOption) (int64, error) {
-    db := r.DB(ctx)
-
-    for _, opt := range opts {
-        db = opt(db)
-    }
-
-    if force {
-        db = db.Unscoped()
-    }
-
-    result := db.Delete(new(Model))
-    if result.Error != nil {
-        return 0, NewRepositoryError(result.Error, r.EntityName, ErrDeleteFailed)
-    }
-    if result.RowsAffected == 0 {
-        return 0, NewRepositoryError(gorm.ErrRecordNotFound, r.EntityName, ErrNotFound)
-    }
-    return result.RowsAffected, nil
-}
-
 // FindOne ищет одну запись
 func (r *repository[Model]) FindOne(ctx context.Context, opts ...RepositoryOption) (*Model, error) {
-	db := r.DB(ctx).Model(new(Model))
-	
-	// Применяем опции
+	db := r.DB(ctx)
+
 	for _, opt := range opts {
 		db = opt(db)
 	}
-	
+
 	var model Model
 	err := db.First(&model).Error
 	if err != nil {
@@ -113,13 +113,12 @@ func (r *repository[Model]) FindOne(ctx context.Context, opts ...RepositoryOptio
 
 // FindAll ищет все записи
 func (r *repository[Model]) FindAll(ctx context.Context, opts ...RepositoryOption) ([]Model, error) {
-	db := r.DB(ctx).Model(new(Model))
-	
-	// Применяем опции
+	db := r.DB(ctx)
+
 	for _, opt := range opts {
 		db = opt(db)
 	}
-	
+
 	var models []Model
 	err := db.Find(&models).Error
 	if err != nil {
@@ -130,13 +129,12 @@ func (r *repository[Model]) FindAll(ctx context.Context, opts ...RepositoryOptio
 
 // Count подсчитывает количество записей
 func (r *repository[Model]) Count(ctx context.Context, opts ...RepositoryOption) (int64, error) {
-	db := r.DB(ctx).Model(new(Model))
-	
-	// Применяем опции
+	db := r.DB(ctx)
+
 	for _, opt := range opts {
 		db = opt(db)
 	}
-	
+
 	var count int64
 	err := db.Count(&count).Error
 	if err != nil {
@@ -155,8 +153,8 @@ func (r *repository[Model]) Exists(ctx context.Context, opts ...RepositoryOption
 }
 
 // RawQuery выполняет голый запрос
-func (r *repository[Model]) RawQuery(ctx context.Context, sql string, args []any, res []any) ([]Model, error) {
-    var results []Model
-    err := r.DB(ctx).Raw(sql, args...).Scan(&results).Error
-    return results, err
+func (r *repository[Model]) RawQuery(ctx context.Context, sql string, args ...any) ([]Model, error) {
+	var results []Model
+	err := r.DB(ctx).Raw(sql, args...).Scan(&results).Error
+	return results, err
 }

@@ -13,6 +13,8 @@ type RepositoryOption func(db *gorm.DB) *gorm.DB
 
 // Like тип для LIKE-условий в WithConditions
 type Like string
+// IsNull тип для IsNull-условий в WithConditions
+type IsNull bool
 
 // WithConditions добавляет условия WHERE
 // Несколько map объединяются через OR, поля внутри одной map — через AND
@@ -45,6 +47,12 @@ func WithConditions(conditions ...map[string]any) RepositoryOption {
 				}
 				if like, ok := value.(Like); ok {
 					db = apply(qualify(field)+" LIKE ?", string(like))
+				} else if isNull, ok := value.(IsNull); ok {
+					opp := ""
+					if !isNull {
+						opp = " NOT"
+					}
+					db = apply(qualify(field)+" IS" + opp + " NULL")
 				} else {
 					db = apply(map[string]any{qualify(field): value})
 				}

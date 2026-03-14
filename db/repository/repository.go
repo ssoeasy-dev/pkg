@@ -34,13 +34,15 @@ func NewRepository[Model any](txManager tx.TxManager, log *logger.Logger, Entity
 }
 
 func (r *repository[Model]) DB(ctx context.Context) *gorm.DB {
-	db := r.txManager.GetDB(ctx)
+	// Session(NewDB: true) — свежий клон, не делит Statement с другими репозиториями
+	// внутри транзакции. Model() вызываем первым — он создаёт финальный клон.
+	// Parse вызываем на нём же, чтобы Statement.Table был заполнен до того,
+	// как WithJoins/WithOrder/WithConditions прочитают mainTable.
+	db := r.txManager.GetDB(ctx).Session(&gorm.Session{NewDB: true}).Model(new(Model))
 	if err := db.Statement.Parse(new(Model)); err != nil {
-		r.log.Error(ctx, "Model not parsed", map[string]any{
-			"error": err.Error(),
-		})
+		r.log.Error(ctx, "Model not parsed", map[string]any{"error": err.Error()})
 	}
-	return db.Model(new(Model))
+	return db
 }
 
 // Create создает новую запись

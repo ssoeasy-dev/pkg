@@ -200,8 +200,8 @@ func WithSelect(fields ...string) RepositoryOption {
 		mainTable := db.Statement.Table
 		qualified := make([]string, len(fields))
 		for i, field := range fields {
-			if strings.Contains(field, ".") {
-				qualified[i] = field
+			if strings.Contains(field, ".") || strings.HasPrefix(field, "(") {
+				qualified[i] = field  // raw-выражение — не трогаем
 			} else {
 				qualified[i] = fmt.Sprintf("%s.%s", mainTable, field)
 			}

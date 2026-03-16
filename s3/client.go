@@ -50,6 +50,18 @@ func NewClient(cfg *Config) (*Client, error) {
 	}, nil
 }
 
+func (c *Client) Presign(ctx context.Context, key string, ttl time.Duration) (string, error) {
+	presigner := s3.NewPresignClient(c.S3)
+	out, err := presigner.PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(c.bucket),
+		Key:    aws.String(key),
+	}, s3.WithPresignExpires(ttl))
+	if err != nil {
+		return "", fmt.Errorf("s3: presign %q: %w", key, err)
+	}
+	return out.URL, nil
+}
+
 type Object struct {
 	Key           string
 	ContentType   *string

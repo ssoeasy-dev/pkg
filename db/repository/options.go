@@ -70,13 +70,19 @@ func WithConditions(conditions ...map[string]any) RepositoryOption {
 }
 
 // WithPreloads добавляет предзагрузку связей
-func WithPreloads(preloads ...string) RepositoryOption {
-	return func(db *gorm.DB) *gorm.DB {
-		for _, preload := range preloads {
-			db = db.Preload(preload)
-		}
-		return db
-	}
+func WithPreloads(preload string, opts ...RepositoryOption) RepositoryOption {
+    return func(db *gorm.DB) *gorm.DB {
+        if len(opts) == 0 {
+            return db.Preload(preload)
+        }
+        scope := func(db *gorm.DB) *gorm.DB {
+            for _, opt := range opts {
+                db = opt(db)
+            }
+            return db
+        }
+        return db.Preload(preload, scope)
+    }
 }
 
 // JoinType тип JOIN'а

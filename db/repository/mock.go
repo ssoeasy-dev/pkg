@@ -3,124 +3,181 @@ package repository
 import (
 	"context"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
+	"gorm.io/gorm"
 )
 
-type MockRepository[M any] struct {
+// MockRepository — mock-реализация интерфейса Repository[Model].
+// Используется в unit-тестах сервисов.
+//
+// Пример:
+//
+//	mockRepo := repository.NewMockRepository[models.User]()
+//	mockRepo.OnFindOneReturn(ctx, &user)
+//	// или
+//	mockRepo.FindOneErrNotFound(ctx)
+type MockRepository[Model any] struct {
 	mock.Mock
 }
 
-func NewMockRepository[M any]() *MockRepository[M] {
-	return &MockRepository[M]{}
+func NewMockRepository[Model any]() *MockRepository[Model] {
+	return &MockRepository[Model]{}
 }
 
-func (m *MockRepository[M]) Create(ctx context.Context, value *M) error {
-	args := m.Called(ctx, value)
+// ─── Interface implementation ─────────────────────────────────────────────────
 
+func (m *MockRepository[Model]) DB(ctx context.Context) *gorm.DB {
+	args := m.Called(ctx)
+	if args.Get(0) != nil {
+		return args.Get(0).(*gorm.DB)
+	}
+	return nil
+}
+
+func (m *MockRepository[Model]) Create(ctx context.Context, value *Model, opts ...RepositoryOption) error {
+	args := m.Called(ctx, value, opts)
 	return args.Error(0)
 }
 
-func (m *MockRepository[Model]) Update(ctx context.Context, value *Model) error {
-	args := m.Called(ctx, value)
-	return args.Error(0)
+func (m *MockRepository[Model]) Update(ctx context.Context, value map[string]any, opts ...RepositoryOption) (int64, error) {
+	args := m.Called(ctx, value, opts)
+	return toInt64(args.Get(0)), args.Error(1)
 }
 
-func (m *MockRepository[Model]) Delete(ctx context.Context, id uuid.UUID, force bool) error {
-	args := m.Called(ctx, id, force)
-	return args.Error(0)
+func (m *MockRepository[Model]) Delete(ctx context.Context, force bool, opts ...RepositoryOption) (int64, error) {
+	args := m.Called(ctx, force, opts)
+	return toInt64(args.Get(0)), args.Error(1)
 }
 
-func (m *MockRepository[Model]) GetByID(ctx context.Context, id uuid.UUID) (*Model, error) {
-	args := m.Called(ctx, id)
-
+func (m *MockRepository[Model]) FindOne(ctx context.Context, opts ...RepositoryOption) (*Model, error) {
+	args := m.Called(ctx, opts)
 	if args.Get(0) != nil {
 		return args.Get(0).(*Model), args.Error(1)
 	}
-
 	return nil, args.Error(1)
 }
 
-func (m *MockRepository[Model]) FindOne(ctx context.Context, conditions map[string]any) (*Model, error) {
-	args := m.Called(ctx, conditions)
-
-	if args.Get(0) != nil {
-		return args.Get(0).(*Model), args.Error(1)
-	}
-
-	return nil, args.Error(1)
-}
-
-func (m *MockRepository[Model]) FindAll(ctx context.Context, conditions map[string]any, limit, offset int) ([]Model, error) {
-	args := m.Called(ctx, conditions, limit, offset)
-
+func (m *MockRepository[Model]) FindAll(ctx context.Context, opts ...RepositoryOption) ([]Model, error) {
+	args := m.Called(ctx, opts)
 	if args.Get(0) != nil {
 		return args.Get(0).([]Model), args.Error(1)
 	}
-
 	return nil, args.Error(1)
 }
 
-func (m *MockRepository[Model]) Count(ctx context.Context, conditions map[string]any) (int64, error) {
-	args := m.Called(ctx, conditions)
-	return args.Get(0).(int64), args.Error(1)
+func (m *MockRepository[Model]) Count(ctx context.Context, opts ...RepositoryOption) (int64, error) {
+	args := m.Called(ctx, opts)
+	return toInt64(args.Get(0)), args.Error(1)
 }
 
-func (m *MockRepository[Model]) Exists(ctx context.Context, conditions map[string]any) (bool, error) {
-	args := m.Called(ctx, conditions)
+func (m *MockRepository[Model]) Exists(ctx context.Context, opts ...RepositoryOption) (bool, error) {
+	args := m.Called(ctx, opts)
 	return args.Bool(0), args.Error(1)
 }
 
-// Helpers
+// ─── Create helpers ───────────────────────────────────────────────────────────
+
+func (m *MockRepository[Model]) OnCreate(ctx context.Context) {
+	m.On("Create", ctx, mock.Anything, mock.Anything).Return(nil)
+}
 
 func (m *MockRepository[Model]) CreateErrAlreadyExists(ctx context.Context) {
-	m.On("Create", ctx, mock.Anything).Return(ErrAlreadyExists)
+	m.On("Create", ctx, mock.Anything, mock.Anything).Return(ErrAlreadyExists)
 }
 
 func (m *MockRepository[Model]) CreateErrCreateFailed(ctx context.Context) {
-	m.On("Create", ctx, mock.Anything).Return(ErrCreationFailed)
+	m.On("Create", ctx, mock.Anything, mock.Anything).Return(ErrCreationFailed)
+}
+
+// ─── Update helpers ───────────────────────────────────────────────────────────
+
+func (m *MockRepository[Model]) OnUpdate(ctx context.Context, affected int64) {
+	m.On("Update", ctx, mock.Anything, mock.Anything).Return(affected, nil)
 }
 
 func (m *MockRepository[Model]) UpdateErrNotFound(ctx context.Context) {
-	m.On("Update", ctx, mock.Anything).Return(ErrNotFound)
+	m.On("Update", ctx, mock.Anything, mock.Anything).Return(int64(0), ErrNotFound)
 }
 
 func (m *MockRepository[Model]) UpdateErrUpdateFailed(ctx context.Context) {
-	m.On("Update", ctx, mock.Anything).Return(ErrUpdateFailed)
+	m.On("Update", ctx, mock.Anything, mock.Anything).Return(int64(0), ErrUpdateFailed)
+}
+
+// ─── Delete helpers ───────────────────────────────────────────────────────────
+
+func (m *MockRepository[Model]) OnDelete(ctx context.Context, affected int64) {
+	m.On("Delete", ctx, mock.Anything, mock.Anything).Return(affected, nil)
 }
 
 func (m *MockRepository[Model]) DeleteErrNotFound(ctx context.Context) {
-	m.On("Delete", ctx, mock.Anything).Return(ErrNotFound)
+	m.On("Delete", ctx, mock.Anything, mock.Anything).Return(int64(0), ErrNotFound)
 }
 
 func (m *MockRepository[Model]) DeleteErrDeleteFailed(ctx context.Context) {
-	m.On("Delete", ctx, mock.Anything).Return(ErrDeleteFailed)
+	m.On("Delete", ctx, mock.Anything, mock.Anything).Return(int64(0), ErrDeleteFailed)
 }
 
-func (m *MockRepository[Model]) GetByIDErrNotFound(ctx context.Context) {
-	m.On("GetByID", ctx, mock.Anything).Return(ErrNotFound)
-}
+// ─── FindOne helpers ──────────────────────────────────────────────────────────
 
-func (m *MockRepository[Model]) GetByIDErrGetFailed(ctx context.Context) {
-	m.On("GetByID", ctx, mock.Anything).Return(ErrGetFailed)
+func (m *MockRepository[Model]) OnFindOneReturn(ctx context.Context, model *Model) {
+	m.On("FindOne", ctx, mock.Anything).Return(model, nil)
 }
 
 func (m *MockRepository[Model]) FindOneErrNotFound(ctx context.Context) {
-	m.On("FindOne", ctx, mock.Anything).Return(ErrNotFound)
+	m.On("FindOne", ctx, mock.Anything).Return(nil, ErrNotFound)
 }
 
 func (m *MockRepository[Model]) FindOneErrGetFailed(ctx context.Context) {
-	m.On("FindOne", ctx, mock.Anything).Return(ErrGetFailed)
+	m.On("FindOne", ctx, mock.Anything).Return(nil, ErrGetFailed)
+}
+
+// ─── FindAll helpers ──────────────────────────────────────────────────────────
+
+func (m *MockRepository[Model]) OnFindAllReturn(ctx context.Context, models []Model) {
+	m.On("FindAll", ctx, mock.Anything).Return(models, nil)
 }
 
 func (m *MockRepository[Model]) FindAllErrGetFailed(ctx context.Context) {
-	m.On("FindAll", ctx, mock.Anything).Return(ErrGetFailed)
+	m.On("FindAll", ctx, mock.Anything).Return(nil, ErrGetFailed)
+}
+
+// ─── Count helpers ────────────────────────────────────────────────────────────
+
+func (m *MockRepository[Model]) OnCountReturn(ctx context.Context, count int64) {
+	m.On("Count", ctx, mock.Anything).Return(count, nil)
 }
 
 func (m *MockRepository[Model]) CountErrGetFailed(ctx context.Context) {
-	m.On("Count", ctx, mock.Anything).Return(ErrGetFailed)
+	m.On("Count", ctx, mock.Anything).Return(int64(0), ErrGetFailed)
+}
+
+// ─── Exists helpers ───────────────────────────────────────────────────────────
+
+func (m *MockRepository[Model]) OnExistsReturn(ctx context.Context, exists bool) {
+	m.On("Exists", ctx, mock.Anything).Return(exists, nil)
 }
 
 func (m *MockRepository[Model]) ExistsErrGetFailed(ctx context.Context) {
-	m.On("Exists", ctx, mock.Anything).Return(ErrGetFailed)
+	m.On("Exists", ctx, mock.Anything).Return(false, ErrGetFailed)
+}
+
+// ─── DB helpers ───────────────────────────────────────────────────────────────
+
+func (m *MockRepository[Model]) OnDB(ctx context.Context, db *gorm.DB) {
+	m.On("DB", ctx).Return(db)
+}
+
+// ─── Internal ─────────────────────────────────────────────────────────────────
+
+// toInt64 безопасно приводит значение к int64.
+// Нужен потому что testify хранит аргументы как interface{},
+// и прямой type assertion паникует если Return получил nil или int вместо int64.
+func toInt64(v any) int64 {
+	if v == nil {
+		return 0
+	}
+	if n, ok := v.(int64); ok {
+		return n
+	}
+	return 0
 }

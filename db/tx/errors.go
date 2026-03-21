@@ -1,13 +1,9 @@
 package tx
 
-import (
-	"errors"
-
-	"github.com/ssoeasy-dev/pkg/db"
-)
+import "errors"
 
 var (
-	ErrTxBegin    db.DBError = errors.New("failed to begin transaction")
-	ErrTxCommit   db.DBError = errors.New("failed to commit transaction")
-	ErrTxRollback db.DBError = errors.New("failed to rollback transaction")
+	ErrTxBegin    = errors.New("failed to begin transaction")
+	ErrTxCommit   = errors.New("failed to commit transaction")
+	ErrTxRollback = errors.New("failed to rollback transaction")
 )

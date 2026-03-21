@@ -4,27 +4,29 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ssoeasy-dev/pkg/logger"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"github.com/ssoeasy-dev/pkg/logger"
 	gormLogger "gorm.io/gorm/logger"
 )
 
+// DB обёртка над gorm.DB с управлением пулом соединений.
+// Conn публичен намеренно — используется в TxManager и репозиториях.
 type DB struct {
 	Conn *gorm.DB
-	log  *logger.Logger
 }
 
+// NewDB создаёт подключение к PostgreSQL.
+// Уровень логирования GORM определяется через cfg.Environment.
 func NewDB(cfg *Config, log *logger.Logger) (*DB, error) {
-	gormCfg := &gorm.Config{
-		Logger: gormLogger.Default.LogMode(gormLogger.Silent),
+	logLevel := gormLogger.Silent
+	if cfg.Environment.IsVerbose() {
+		logLevel = gormLogger.Info
 	}
 
-	if cfg.Environment == "development" {
-		gormCfg.Logger = gormLogger.Default.LogMode(gormLogger.Info)
-	}
-
-	conn, err := gorm.Open(postgres.Open(cfg.DSN()), gormCfg)
+	conn, err := gorm.Open(postgres.Open(cfg.DSN()), &gorm.Config{
+		Logger: gormLogger.Default.LogMode(logLevel),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
@@ -34,8 +36,8 @@ func NewDB(cfg *Config, log *logger.Logger) (*DB, error) {
 		return nil, fmt.Errorf("failed to get database instance: %w", err)
 	}
 
-	sqlDB.SetMaxIdleConns(10)
-	sqlDB.SetMaxOpenConns(100)
+	sqlDB.SetMaxIdleConns(cfg.MaxIdleConnsOrDefault())
+	sqlDB.SetMaxOpenConns(cfg.MaxOpenConnsOrDefault())
 
 	log.Info(context.Background(), "Database connected successfully", map[string]any{
 		"host":     cfg.Host,
@@ -44,20 +46,10 @@ func NewDB(cfg *Config, log *logger.Logger) (*DB, error) {
 		"database": cfg.Database,
 	})
 
-	return &DB{
-		Conn: conn,
-		log:  log,
-	}, nil
+	return &DB{Conn: conn}, nil
 }
 
-func (d *DB) Close() error {
-	sqlDB, err := d.Conn.DB()
-	if err != nil {
-		return err
-	}
-	return sqlDB.Close()
-}
-
+// Ping проверяет доступность базы данных.
 func (d *DB) Ping() error {
 	sqlDB, err := d.Conn.DB()
 	if err != nil {
@@ -67,4 +59,13 @@ func (d *DB) Ping() error {
 		return fmt.Errorf("failed to ping database: %w", err)
 	}
 	return nil
+}
+
+// Close закрывает пул соединений.
+func (d *DB) Close() error {
+	sqlDB, err := d.Conn.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.Close()
 }

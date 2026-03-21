@@ -23,25 +23,49 @@ log.Debug(ctx, "Token parsed", map[string]any{"claims": claims}) // только
 
 ## API
 
-```go
-func NewLogger(environment Environment, prefix string) *Logger
+`NewLogger` возвращает интерфейс `Logger` — используйте его в типах функций и struct-ах:
 
-func (l *Logger) Info(ctx context.Context, msg string, fields map[string]any)
-func (l *Logger) Warn(ctx context.Context, msg string, fields map[string]any)
-func (l *Logger) Error(ctx context.Context, msg string, fields map[string]any)
-func (l *Logger) Debug(ctx context.Context, msg string, fields map[string]any)
+```go
+// NewLogger возвращает Logger (интерфейс), не конкретный тип.
+func NewLogger(environment Environment, prefix string) Logger
+
+// Интерфейс:
+type Logger interface {
+    Debug(ctx context.Context, msg string, fields map[string]any)
+    Info(ctx context.Context, msg string, fields map[string]any)
+    Warn(ctx context.Context, msg string, fields map[string]any)
+    Error(ctx context.Context, msg string, fields map[string]any)
+}
+```
+
+Принимайте `logger.Logger` (интерфейс) в сигнатурах — это позволяет подставить мок в тестах:
+
+```go
+// Правильно:
+func NewServer(addr string, log logger.Logger) *Server { ... }
+
+// Неправильно (слишком конкретный тип):
+func NewServer(addr string, log *logger.Logger) *Server { ... }
 ```
 
 ## Окружения
 
-| Константа                | Значение        | Debug |
-| ------------------------ | --------------- | ----- |
-| `EnvironmentDevelopment` | `"development"` | ✅    |
-| `EnvironmentLocal`       | `"local"`       | ✅    |
-| `EnvironmentProduction`  | `"production"`  | ❌    |
-| `EnvironmentTest`        | `"test"`        | ❌    |
+| Константа                | Значение        | Debug | IsVerbose() |
+| ------------------------ | --------------- | ----- | ----------- |
+| `EnvironmentDevelopment` | `"development"` | ✅    | `true`      |
+| `EnvironmentLocal`       | `"local"`       | ✅    | `true`      |
+| `EnvironmentProduction`  | `"production"`  | ❌    | `false`     |
+| `EnvironmentTest`        | `"test"`        | ❌    | `false`     |
 
-`Debug` выводится только в `development` и `local`. В остальных окружениях вызовы `Debug` игнорируются.
+`Debug` выводится только в `development` и `local`. Во всех остальных окружениях вызовы `Debug` игнорируются.
+
+`IsVerbose()` доступен и снаружи — полезен для пропуска дорогого форматирования:
+
+```go
+if env.IsVerbose() {
+    log.Debug(ctx, "expensive", buildDebugFields())
+}
+```
 
 ## Контекст
 
@@ -68,7 +92,34 @@ logger.RequestIDKey // ctxKey("request_id")
 auth.svc 2025/01/01 12:00:00 logger.go:42: [INFO] User registered | trace_id=abc request_id=xyz user_id=1
 ```
 
-`trace_id` и `request_id` всегда выводятся первыми, остальные поля — в произвольном порядке.
+`trace_id` и `request_id` всегда выводятся первыми, остальные поля — в алфавитном порядке (детерминировано).
+
+## Мокирование в тестах
+
+`Logger` — интерфейс, поэтому легко мокируется без дополнительных библиотек:
+
+```go
+type noopLogger struct{}
+
+func (noopLogger) Debug(_ context.Context, _ string, _ map[string]any) {}
+func (noopLogger) Info(_ context.Context, _ string, _ map[string]any)  {}
+func (noopLogger) Warn(_ context.Context, _ string, _ map[string]any)  {}
+func (noopLogger) Error(_ context.Context, _ string, _ map[string]any) {}
+
+// В тесте:
+svc := NewService(noopLogger{})
+```
+
+Или через стандартный `testify/mock`:
+
+```go
+type mockLogger struct{ mock.Mock }
+
+func (m *mockLogger) Error(ctx context.Context, msg string, fields map[string]any) {
+    m.Called(ctx, msg, fields)
+}
+// ...
+```
 
 ## Лицензия
 

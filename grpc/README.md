@@ -8,22 +8,21 @@
 go get github.com/ssoeasy-dev/pkg/grpc@latest
 ```
 
-## Использование
+## Быстрый старт
 
 ```go
 import pkggrpc "github.com/ssoeasy-dev/pkg/grpc"
 
-// Создание сервера
+// Создание сервера со стандартными интерцепторами
 srv := pkggrpc.NewServer(":50052", log)
 
-// Регистрация gRPC хендлеров
-pb.RegisterAuthServiceServer(srv.GetGRPCServer(), authHandler)
-pb.RegisterVerificationServiceServer(srv.GetGRPCServer(), verificationHandler)
+// Регистрация gRPC-сервисов
+pb.RegisterMyServiceServer(srv.GetGRPCServer(), &myHandler{})
 
-// Опционально: gRPC reflection (для grpcurl и отладки)
+// Опционально: gRPC reflection (для grpcurl, Evans)
 srv.RegisterReflection()
 
-// Запуск (блокирующий)
+// Запуск в горутине (блокирующий)
 go func() {
     if err := srv.Start(); err != nil {
         log.Error(ctx, "gRPC server error", map[string]any{"error": err})
@@ -34,34 +33,74 @@ go func() {
 srv.Stop()
 ```
 
-## API
-
-```go
-func NewServer(addr string, log *logger.Logger) *Server
-
-func (s *Server) GetGRPCServer() *grpc.Server  // регистрация сервисов
-func (s *Server) RegisterReflection()           // gRPC reflection
-func (s *Server) Start() error                  // блокирующий запуск
-func (s *Server) Stop()                         // graceful shutdown
-```
-
 ## Встроенные интерцепторы
 
-Применяются автоматически при `NewServer`:
+`NewServer` применяет следующую цепочку **в порядке выполнения**:
 
-| Интерцептор                 | Описание                                                                                                               |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `traceIDInterceptor`        | Читает `x-trace-id` из metadata; генерирует UUID если отсутствует; записывает в контекст через `logger.TraceIDKey`     |
-| `requestIDInterceptor`      | Читает `x-request-id` из metadata; генерирует UUID если отсутствует; записывает в контекст через `logger.RequestIDKey` |
-| `loggingInterceptor`        | Логирует каждый вызов: метод, длительность, gRPC код ответа                                                            |
-| `recoveryInterceptor`       | Перехватывает panic, логирует stack trace, возвращает `codes.Internal`                                                 |
-| `streamRecoveryInterceptor` | Recovery для stream вызовов                                                                                            |
+| Интерцептор                      | Тип    | Описание                                                                                    |
+| -------------------------------- | ------ | ------------------------------------------------------------------------------------------- |
+| `TraceIDInterceptor()`           | Unary  | Читает `x-trace-id` из metadata; генерирует UUID если отсутствует → `logger.TraceIDKey`     |
+| `RequestIDInterceptor()`         | Unary  | Читает `x-request-id` из metadata; генерирует UUID если отсутствует → `logger.RequestIDKey` |
+| `LoggingInterceptor(log)`        | Unary  | Логирует метод, длительность и gRPC статус; ошибки — на Error, успех — на Info              |
+| `RecoveryInterceptor(log)`       | Unary  | Перехватывает panic, логирует stack trace, возвращает `codes.Internal`                      |
+| `StreamRecoveryInterceptor(log)` | Stream | То же для stream-хендлеров                                                                  |
 
-Trace ID и Request ID из metadata автоматически становятся доступны через `logger` в любом месте обработки запроса.
+### Заголовки трассировки
+
+```go
+pkggrpc.HeaderTraceID   // "x-trace-id"
+pkggrpc.HeaderRequestID // "x-request-id"
+```
+
+Интерцепторы автоматически пробрасывают эти заголовки из gRPC metadata в контекст. Значения затем доступны через логгер, который читает их из контекста при каждом вызове.
+
+## Использование интерцепторов отдельно
+
+Все интерцепторы экспортированы — можно использовать в собственной конфигурации:
+
+```go
+import (
+    pkggrpc "github.com/ssoeasy-dev/pkg/grpc"
+    goGrpc "google.golang.org/grpc"
+)
+
+// Сервер без логирования (только трассировка и recovery)
+srv := goGrpc.NewServer(
+    goGrpc.ChainUnaryInterceptor(
+        pkggrpc.TraceIDInterceptor(),
+        pkggrpc.RequestIDInterceptor(),
+        pkggrpc.RecoveryInterceptor(log),
+        myCustomRateLimitInterceptor(),
+    ),
+    goGrpc.ChainStreamInterceptor(
+        pkggrpc.StreamRecoveryInterceptor(log),
+    ),
+)
+```
 
 ## Интеграция с api-gateway
 
-`api-gateway` пробрасывает `x-trace-id` и `x-request-id` в gRPC metadata через `contextInterceptor` при каждом исходящем вызове. Таким образом trace-контекст сквозной: HTTP → gRPC → лог.
+`auth.api` пробрасывает `x-trace-id` и `x-request-id` в gRPC metadata через `contextInterceptor` при каждом исходящем вызове. Трейс-контекст сквозной: HTTP → gRPC metadata → context → логгер.
+
+Клиентская сторона:
+
+```go
+// При исходящем gRPC-вызове: добавляем trace-id из AsyncLocalStorage
+metadata.AppendToOutgoingContext(ctx,
+    pkggrpc.HeaderTraceID,   traceId,
+    pkggrpc.HeaderRequestID, requestId,
+)
+```
+
+## Тесты
+
+```bash
+# Unit-тесты (без внешних зависимостей)
+go test -v -race ./...
+
+# Интеграционные тесты (запускают реальный gRPC-сервер)
+go test -v -race -tags=integration ./...
+```
 
 ## Лицензия
 

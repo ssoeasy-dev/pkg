@@ -39,7 +39,7 @@ func resolveTableName(db *gorm.DB) string {
 		return ""
 	}
 	if db.Statement.DB != nil {
-		return db.Statement.DB.NamingStrategy.TableName(t.Name())
+		return db.Statement.NamingStrategy.TableName(t.Name())
 	}
 	return ""
 }

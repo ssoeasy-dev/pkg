@@ -182,7 +182,7 @@ func TestLogger_Fields_SortedAfterTraceAndRequest(t *testing.T) {
 	aPos := strings.Index(out, "a_field")
 	zPos := strings.Index(out, "z_field")
 
-	if !(tiPos < aPos && aPos < zPos) {
+	if tiPos >= aPos || aPos >= zPos {
 		t.Errorf("unexpected field order: %q", out)
 	}
 }
@@ -208,7 +208,7 @@ func TestEnrichFromContext_NoContextValues_ReturnsSameMap(t *testing.T) {
 	result := enrichFromContext(context.Background(), original)
 
 	// Без контекстных значений возвращается тот же самый map (не копия).
-	if &result == nil || result["key"] != "val" {
+	if result == nil || result["key"] != "val" {
 		t.Error("expected original map to be returned unchanged")
 	}
 }

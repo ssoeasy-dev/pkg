@@ -1,0 +1,214 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  # ─── 1. Определяем изменённые пакеты ────────────────────────────────────────
+  detect-changes:
+    name: Detect changed packages
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.detect.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed packages
+        id: detect
+        run: |
+          ALL_PACKAGES='["db","logger","grpc","rmq","s3","errors"]'
+
+          # При первом коммите или если нет предыдущего — релизим всё
+          if [ -z "${{ github.event.before }}" ] || \
+             ! git rev-parse "${{ github.event.before }}" >/dev/null 2>&1; then
+            echo "No previous commit — releasing all packages"
+            echo "matrix={\"package\":${ALL_PACKAGES}}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          CHANGED="[]"
+          BASE="${{ github.event.before }}"
+          HEAD="${{ github.sha }}"
+
+          for pkg in db logger grpc rmq s3 errors; do
+            if git diff --name-only "$BASE" "$HEAD" | grep -q "^${pkg}/"; then
+              CHANGED=$(echo "$CHANGED" | jq ". + [\"${pkg}\"]")
+            fi
+          done
+
+          echo "Changed packages: $CHANGED"
+          echo "matrix={\"package\":$(echo "$CHANGED")}" >> $GITHUB_OUTPUT
+
+  # ─── 2. Релизим каждый изменённый пакет ─────────────────────────────────────
+  release:
+    name: Release ${{ matrix.package }}
+    needs: detect-changes
+    if: needs.detect-changes.outputs.matrix != '{"package":[]}'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ matrix.package }}/go.mod
+
+      - name: Configure Go for private modules
+        run: |
+          git config --global \
+            url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf \
+            "https://github.com/"
+          go env -w GOPRIVATE=github.com/ssoeasy-dev/*
+
+      # ── Определяем следующую версию ─────────────────────────────────────────
+      - name: Calculate next version
+        id: version
+        run: |
+          PKG="${{ matrix.package }}"
+
+          # Ищем последний тег вида <pkg>/vX.Y.Z
+          LAST_TAG=$(git tag -l "${PKG}/v*" \
+            | sort -V \
+            | tail -n 1)
+
+          if [ -z "$LAST_TAG" ]; then
+            NEXT="v1.0.0"
+            echo "No existing tags — starting at $NEXT"
+          else
+            # Извлекаем X.Y.Z
+            VERSION="${LAST_TAG#${PKG}/v}"
+            MAJOR=$(echo "$VERSION" | cut -d. -f1)
+            MINOR=$(echo "$VERSION" | cut -d. -f2)
+            PATCH=$(echo "$VERSION" | cut -d. -f3)
+
+            # Смотрим commit messages с последнего тега
+            COMMITS=$(git log "${LAST_TAG}..HEAD" \
+              --format="%s" \
+              -- "${PKG}/" \
+              2>/dev/null || true)
+
+            echo "Commits since $LAST_TAG:"
+            echo "$COMMITS"
+
+            # Правила бампа:
+            #   BREAKING или major: → major bump
+            #   feat или minor:     → minor bump
+            #   всё остальное       → patch bump
+            if echo "$COMMITS" | grep -qiE "BREAKING|^major:"; then
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              BUMP_TYPE="major"
+            elif echo "$COMMITS" | grep -qiE "^feat:|^minor:"; then
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              BUMP_TYPE="minor"
+            else
+              PATCH=$((PATCH + 1))
+              BUMP_TYPE="patch"
+            fi
+
+            NEXT="v${MAJOR}.${MINOR}.${PATCH}"
+            echo "Bump type: $BUMP_TYPE — $LAST_TAG → ${PKG}/${NEXT}"
+          fi
+
+          echo "version=${NEXT}" >> $GITHUB_OUTPUT
+          echo "tag=${PKG}/${NEXT}" >> $GITHUB_OUTPUT
+          echo "last_tag=${LAST_TAG}" >> $GITHUB_OUTPUT
+
+      # ── Проверяем, что тег ещё не существует ────────────────────────────────
+      - name: Check tag doesn't exist
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          if git tag -l "$TAG" | grep -q "$TAG"; then
+            echo "⚠️ Tag $TAG already exists — skipping release"
+            exit 1
+          fi
+          echo "✅ Tag $TAG is free"
+
+      # ── Прогоняем тесты перед релизом ────────────────────────────────────────
+      - name: Run tests
+        working-directory: ${{ matrix.package }}
+        run: |
+          go mod download
+          go test -v -race ./...
+
+      # ── Собираем changelog ───────────────────────────────────────────────────
+      - name: Build changelog
+        id: changelog
+        run: |
+          PKG="${{ matrix.package }}"
+          LAST_TAG="${{ steps.version.outputs.last_tag }}"
+
+          if [ -z "$LAST_TAG" ]; then
+            RANGE="HEAD"
+          else
+            RANGE="${LAST_TAG}..HEAD"
+          fi
+
+          # Собираем коммиты, касающиеся пакета
+          CHANGES=$(git log "$RANGE" \
+            --format="- %s ([%h](https://github.com/${{ github.repository }}/commit/%H))" \
+            -- "${PKG}/" \
+            2>/dev/null || true)
+
+          if [ -z "$CHANGES" ]; then
+            CHANGES="- Minor changes and improvements"
+          fi
+
+          # Сохраняем в файл (многострочный output через heredoc)
+          {
+            echo "notes<<NOTES_EOF"
+            echo "## What's Changed"
+            echo ""
+            echo "$CHANGES"
+            echo ""
+            echo "**Full Changelog:** https://github.com/${{ github.repository }}/compare/${LAST_TAG}...${{ steps.version.outputs.tag }}"
+            echo "NOTES_EOF"
+          } >> $GITHUB_OUTPUT
+
+      # ── Создаём тег ──────────────────────────────────────────────────────────
+      - name: Create git tag
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          TAG="${{ steps.version.outputs.tag }}"
+          git tag -a "$TAG" -m "Release ${TAG}"
+          git push origin "$TAG"
+          echo "✅ Tag $TAG created and pushed"
+
+      # ── Создаём GitHub Release ───────────────────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "${{ matrix.package }} ${{ steps.version.outputs.version }}"
+          body: ${{ steps.changelog.outputs.notes }}
+          draft: false
+          prerelease: false
+
+      # ── Выводим инструкцию по использованию ─────────────────────────────────
+      - name: Print usage
+        run: |
+          PKG="${{ matrix.package }}"
+          TAG="${{ steps.version.outputs.tag }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          echo ""
+          echo "✅ Released: ${TAG}"
+          echo ""
+          echo "📦 To use in your service:"
+          echo "   go get github.com/${{ github.repository }}/${PKG}@${VERSION}"

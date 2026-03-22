@@ -28,7 +28,7 @@ func TestError_ErrorString(t *testing.T) {
 func TestError_Kind(t *testing.T) {
 	kind := errors.ErrNotFound
 	wrapped := errors.New(kind, "details")
-	assert.Equal(t, kind, wrapped.(errors.Error).Kind())
+	assert.Equal(t, kind, wrapped.(errors.Kinded).Kind())
 }
 
 func TestError_Is(t *testing.T) {

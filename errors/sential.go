@@ -5,6 +5,10 @@ import (
 	"errors"
 )
 
+type Kinded interface {
+    Kind() error
+}
+
 var (
 	ErrCreationFailed = errors.New("creation failed")
 	ErrUpdateFailed   = errors.New("update failed")

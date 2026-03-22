@@ -24,7 +24,7 @@ jobs:
       - name: Detect changed packages
         id: detect
         run: |
-          ALL_PACKAGES='["db","logger","grpc","rmq","s3","errors"]'
+          ALL_PACKAGES='["errors"]'
 
           # При первом коммите или если нет предыдущего — релизим всё
           if [ -z "${{ github.event.before }}" ] || \
@@ -38,7 +38,7 @@ jobs:
           BASE="${{ github.event.before }}"
           HEAD="${{ github.sha }}"
 
-          for pkg in db logger grpc rmq s3 errors; do
+          for pkg in errors; do
             if git diff --name-only "$BASE" "$HEAD" | grep -q "^${pkg}/"; then
               CHANGED=$(echo "$CHANGED" | jq ". + [\"${pkg}\"]")
             fi

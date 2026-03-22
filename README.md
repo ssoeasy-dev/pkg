@@ -4,13 +4,23 @@
 
 ## Пакеты
 
-| Пакет    | Модуль                              | Последняя версия | Описание                                              |
-| -------- | ----------------------------------- | ---------------- | ----------------------------------------------------- |
+| Пакет    | Модуль                              | Последняя версия | Описание                                        |
+| -------- | ----------------------------------- | ---------------- | ----------------------------------------------- |
+| `errors` | `github.com/ssoeasy-dev/pkg/errors` | v1.0.0           | Кастомная обработка ошибок с Kind               |
 
 ## Структура репозитория
 
 ```
 pkg/
+└── errors/
+    ├── error_test.go
+    ├── error.go
+    ├── go.mod
+    ├── go.sum
+    ├── kind.go
+    ├── README.md
+    ├── verbose_error_test.go
+    └── verbose_error.go
 ```
 
 ## Установка
@@ -18,11 +28,13 @@ pkg/
 Каждый пакет устанавливается отдельно:
 
 ```bash
+go get github.com/ssoeasy-dev/pkg/errors@latest
 ```
 
 Или конкретную версию:
 
 ```bash
+go get github.com/ssoeasy-dev/pkg/errors@v1.0.0
 ```
 
 ## Релизы
@@ -62,10 +74,10 @@ curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/insta
 
 ```bash
 # Один пакет
-cd db && go test -v -race ./...
+cd errors && go test -v -race ./...
 
 # Все пакеты
-for pkg in ...; do
+for pkg in errors; do
   echo "=== $pkg ===" && cd $pkg && go test -race ./... && cd ..
 done
 ```
@@ -83,7 +95,7 @@ done
 
 ```go
 // auth.svc/go.mod
-replace github.com/ssoeasy-dev/pkg/db => ../pkg/db
+replace github.com/ssoeasy-dev/pkg/errors => ../pkg/errors
 ```
 
 Убирайте `replace` перед мержем.
@@ -91,6 +103,8 @@ replace github.com/ssoeasy-dev/pkg/db => ../pkg/db
 Если нужно протестировать изменения из `develop` до релиза — ссылайтесь по commit hash:
 
 ```bash
+go get github.com/ssoeasy-dev/pkg/errors@<commit-hash>
+# go.mod получит псевдо-версию: v1.0.11-0.20260320143021-abc1234f8b9a
 ```
 
 ### Добавление нового пакета

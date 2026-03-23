@@ -16,7 +16,7 @@ func errorHandler(ctx context.Context, log logger.Logger, err error) error {
 
 	logError := errors.Unwrap(err)
 	grpcErrStr := err.Error()
-	code := codes.Internal
+	var code codes.Code
 
 	switch {
 	// repository errors 10

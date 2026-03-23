@@ -5,30 +5,23 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ssoeasy-dev/pkg/logger"
-
 	"github.com/rabbitmq/amqp091-go"
+	"github.com/ssoeasy-dev/pkg/logger"
 )
 
+// Client управляет AMQP-соединением с RabbitMQ.
+// Один Client — одно соединение. Consumer создаёт собственные каналы через это соединение.
 type Client struct {
-	conn    *amqp091.Connection
-	channel *amqp091.Channel
-	cfg     *Config
-	log     *logger.Logger
+	conn *amqp091.Connection
+	cfg  *Config
+	log  logger.Logger
 }
 
-func NewClient(log *logger.Logger, cfg *Config) (*Client, error) {
+// NewClient создаёт и возвращает Client с открытым соединением.
+func NewClient(log logger.Logger, cfg *Config) (*Client, error) {
 	conn, err := amqp091.Dial(cfg.URL())
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)
-	}
-
-	channel, err := conn.Channel()
-	if err != nil {
-		if err := conn.Close(); err != nil {
-			return nil, fmt.Errorf("failed to close channel after failing open channel: %w", err)
-		}
-		return nil, fmt.Errorf("failed to open channel: %w", err)
+		return nil, newError(ErrConnect, "failed to connect to RabbitMQ", err)
 	}
 
 	log.Info(context.Background(), "RabbitMQ client connected", map[string]any{
@@ -38,43 +31,35 @@ func NewClient(log *logger.Logger, cfg *Config) (*Client, error) {
 		"vhost": cfg.VHost,
 	})
 
-	return &Client{
-		conn:    conn,
-		channel: channel,
-		cfg:     cfg,
-		log:     log,
-	}, nil
+	return &Client{conn: conn, cfg: cfg, log: log}, nil
 }
 
-func (c *Client) Channel() *amqp091.Channel {
-	return c.channel
-}
-
+// Close закрывает соединение. Безопасно вызывать повторно.
 func (c *Client) Close() error {
-	if c.channel != nil {
-		if err := c.channel.Close(); err != nil {
-			return fmt.Errorf("failed to close channel: %w", err)
-		}
-	}
-	if c.conn != nil {
+	if c.conn != nil && !c.conn.IsClosed() {
 		if err := c.conn.Close(); err != nil {
-			return fmt.Errorf("failed to close channel: %w", err)
+			return fmt.Errorf("failed to close connection: %w", err)
 		}
 	}
 	return nil
 }
 
+// Reconnect закрывает текущее соединение и устанавливает новое с экспоненциальным backoff.
+// Возвращает ErrConnect если все попытки исчерпаны.
 func (c *Client) Reconnect() error {
 	ctx := context.Background()
 	c.log.Warn(ctx, "Reconnecting to RabbitMQ", nil)
 
 	if err := c.Close(); err != nil {
-		c.log.Warn(ctx, "Error closing old connection", map[string]any{"error": err})
+		c.log.Warn(ctx, "Error closing old connection during reconnect", map[string]any{"error": err})
 	}
 
+	const (
+		maxAttempts = 10
+		maxBackoff  = 30 * time.Second
+	)
+
 	backoff := 2 * time.Second
-	const maxBackoff = 30 * time.Second
-	const maxAttempts = 10
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		c.log.Info(ctx, "Reconnect attempt", map[string]any{
@@ -96,25 +81,10 @@ func (c *Client) Reconnect() error {
 			continue
 		}
 
-		channel, err := conn.Channel()
-		if err != nil {
-			if err := conn.Close(); err != nil {
-				return fmt.Errorf("failed to close channel after failing reconnect: %w", err)
-			}
-			time.Sleep(backoff)
-			if backoff < maxBackoff {
-				backoff *= 2
-			}
-			continue
-		}
-
 		c.conn = conn
-		c.channel = channel
-		c.log.Info(ctx, "RabbitMQ reconnected successfully", map[string]any{
-			"attempt": attempt,
-		})
+		c.log.Info(ctx, "RabbitMQ reconnected successfully", map[string]any{"attempt": attempt})
 		return nil
 	}
 
-	return fmt.Errorf("failed to reconnect after %d attempts", maxAttempts)
+	return newError(ErrConnect, fmt.Sprintf("failed to reconnect after %d attempts", maxAttempts), nil)
 }

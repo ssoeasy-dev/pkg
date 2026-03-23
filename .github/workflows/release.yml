@@ -40,12 +40,12 @@ jobs:
 
           for pkg in errors; do
             if git diff --name-only "$BASE" "$HEAD" | grep -q "^${pkg}/"; then
-              CHANGED=$(echo "$CHANGED" | jq ". + [\"${pkg}\"]")
+              CHANGED=$(echo "$CHANGED" | jq -c ". + [\"${pkg}\"]")
             fi
           done
 
           echo "Changed packages: $CHANGED"
-          echo "matrix={\"package\":$(echo "$CHANGED")}" >> $GITHUB_OUTPUT
+          echo "matrix={\"package\":$CHANGED}" >> $GITHUB_OUTPUT
 
   # ─── 2. Релизим каждый изменённый пакет ─────────────────────────────────────
   release:

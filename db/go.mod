@@ -1,13 +1,14 @@
 module github.com/ssoeasy-dev/pkg/db
 
-go 1.24.1
+go 1.24.11
 
 require (
 	github.com/glebarez/sqlite v1.11.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.6.0
-	github.com/ssoeasy-dev/pkg/logger v1.0.1
-	github.com/stretchr/testify v1.9.0
+	github.com/ssoeasy-dev/pkg/errors v1.0.0
+	github.com/ssoeasy-dev/pkg/logger v1.0.2
+	github.com/stretchr/testify v1.11.1
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1
 )

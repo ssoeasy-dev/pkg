@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ssoeasy-dev/pkg/db/tx"
+	"github.com/ssoeasy-dev/pkg/errors"
 	"github.com/ssoeasy-dev/pkg/logger"
 	"gorm.io/gorm"
 )
@@ -64,12 +65,15 @@ func (r *repository[Model]) DB(ctx context.Context) *gorm.DB {
 }
 
 func (r *repository[Model]) Create(ctx context.Context, value *Model, opts ...RepositoryOption) error {
+	if value == nil {
+		return NewRepositoryError(errors.ErrInvalidArgument, r.EntityName, errors.ErrInvalidArgument)
+	}
 	db := r.DB(ctx)
 	for _, opt := range opts {
 		db = opt(db)
 	}
 	if err := db.Create(value).Error; err != nil {
-		return NewRepositoryError(err, r.EntityName, ErrCreationFailed)
+		return NewRepositoryError(err, r.EntityName, errors.ErrCreationFailed)
 	}
 	return nil
 }
@@ -81,7 +85,7 @@ func (r *repository[Model]) Update(ctx context.Context, value map[string]any, op
 	}
 	result := db.Updates(value)
 	if result.Error != nil {
-		return 0, NewRepositoryError(result.Error, r.EntityName, ErrUpdateFailed)
+		return 0, NewRepositoryError(result.Error, r.EntityName, errors.ErrUpdateFailed)
 	}
 	return result.RowsAffected, nil
 }
@@ -96,7 +100,7 @@ func (r *repository[Model]) Delete(ctx context.Context, force bool, opts ...Repo
 	}
 	result := db.Delete(new(Model))
 	if result.Error != nil {
-		return 0, NewRepositoryError(result.Error, r.EntityName, ErrDeleteFailed)
+		return 0, NewRepositoryError(result.Error, r.EntityName, errors.ErrDeleteFailed)
 	}
 	return result.RowsAffected, nil
 }
@@ -109,7 +113,7 @@ func (r *repository[Model]) FindOne(ctx context.Context, opts ...RepositoryOptio
 	var model Model
 	// Take вместо First: не добавляет неявный ORDER BY primary_key.
 	if err := db.Take(&model).Error; err != nil {
-		return nil, NewRepositoryError(err, r.EntityName, ErrGetFailed)
+		return nil, NewRepositoryError(err, r.EntityName, errors.ErrGetFailed)
 	}
 	return &model, nil
 }
@@ -121,7 +125,7 @@ func (r *repository[Model]) FindAll(ctx context.Context, opts ...RepositoryOptio
 	}
 	var models []Model
 	if err := db.Find(&models).Error; err != nil {
-		return nil, NewRepositoryError(err, r.EntityName, ErrGetFailed)
+		return nil, NewRepositoryError(err, r.EntityName, errors.ErrGetFailed)
 	}
 	return models, nil
 }
@@ -133,7 +137,7 @@ func (r *repository[Model]) Count(ctx context.Context, opts ...RepositoryOption)
 	}
 	var count int64
 	if err := db.Count(&count).Error; err != nil {
-		return 0, NewRepositoryError(err, r.EntityName, ErrGetFailed)
+		return 0, NewRepositoryError(err, r.EntityName, errors.ErrGetFailed)
 	}
 	return count, nil
 }
@@ -149,7 +153,7 @@ func (r *repository[Model]) Exists(ctx context.Context, opts ...RepositoryOption
 func (r *repository[Model]) RawQuery(ctx context.Context, sql string, args ...any) ([]Model, error) {
 	var results []Model
 	if err := r.DB(ctx).Raw(sql, args...).Scan(&results).Error; err != nil {
-		return nil, NewRepositoryError(err, r.EntityName, ErrGetFailed)
+		return nil, NewRepositoryError(err, r.EntityName, errors.ErrGetFailed)
 	}
 	return results, nil
 }

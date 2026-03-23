@@ -114,12 +114,12 @@ func WithConditions(conditions ...map[string]any) RepositoryOption {
 		// без использования db.Or(*gorm.DB), который GORM интерпретирует как подзапрос.
 		type sqlGroup struct {
 			sql  string
-			args []interface{}
+			args []any
 		}
 
 		buildGroup := func(cond map[string]any) sqlGroup {
 			parts := make([]string, 0, len(cond))
-			args := make([]interface{}, 0, len(cond))
+			args := make([]any, 0, len(cond))
 
 			for field, value := range cond {
 				key := qualify(field)
@@ -135,6 +135,10 @@ func WithConditions(conditions ...map[string]any) RepositoryOption {
 					}
 				default:
 					rv := reflect.ValueOf(value)
+					if rv.Kind() == reflect.Slice && rv.IsNil() {
+						// пропустить или обработать как пустой слайс
+						continue
+					}
 					if rv.IsValid() && rv.Kind() == reflect.Slice {
 						// Слайс → IN. GORM раскрывает "IN ?" в "(?,?,?)".
 						parts = append(parts, key+" IN ?")
@@ -166,7 +170,7 @@ func WithConditions(conditions ...map[string]any) RepositoryOption {
 		// Сырой SQL гарантирует корректную группировку скобками:
 		//   (a=1 AND b=2) OR (a=3 AND b=4)
 		sqls := make([]string, 0, len(nonEmpty))
-		allArgs := make([]interface{}, 0)
+		allArgs := make([]any, 0)
 		for _, cond := range nonEmpty {
 			g := buildGroup(cond)
 			sqls = append(sqls, g.sql)

@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/ssoeasy-dev/pkg/db/tx"
 	"github.com/ssoeasy-dev/pkg/logger"
+	"github.com/ssoeasy-dev/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -74,7 +75,8 @@ func setupPostgres(t *testing.T) *gorm.DB {
 }
 
 func newTestLogger() *logger.Logger {
-	return logger.NewLogger(logger.EnvironmentTest, "test")
+	l := logger.NewLogger(logger.EnvironmentTest, "test")
+	return &l
 }
 
 func newRepo(db *gorm.DB) Repository[Article] {
@@ -120,7 +122,7 @@ func TestRepository_FindOne_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := repo.FindOne(ctx, WithConditions(map[string]any{"id": uuid.New()}))
-	assert.ErrorIs(t, err, ErrNotFound)
+	assert.ErrorIs(t, err, errors.ErrNotFound)
 }
 
 func TestRepository_FindOne_WithSelect(t *testing.T) {
@@ -366,6 +368,13 @@ func TestRepository_Update_Multiple(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.EqualValues(t, 3, n)
+
+	// Проверяем, что все записи обновились
+	updated, err := repo.FindAll(ctx, WithConditions(map[string]any{"author": "Ned"}))
+	require.NoError(t, err)
+	for _, art := range updated {
+		assert.Equal(t, 100, art.Views)
+	}
 }
 
 // ─── Delete ───────────────────────────────────────────────────────────────────
@@ -384,7 +393,7 @@ func TestRepository_Delete_Soft(t *testing.T) {
 
 	// Soft-delete: обычный FindOne не находит (deleted_at IS NULL фильтр)
 	_, err = repo.FindOne(ctx, WithConditions(map[string]any{"id": a.ID}))
-	assert.ErrorIs(t, err, ErrNotFound)
+	assert.ErrorIs(t, err, errors.ErrNotFound)
 
 	// WithDeleted(true) (Unscoped) находит мягко удалённую запись
 	found, err := repo.FindOne(ctx,
@@ -412,7 +421,7 @@ func TestRepository_Delete_Hard(t *testing.T) {
 		WithConditions(map[string]any{"id": a.ID}),
 		WithDeleted(true),
 	)
-	assert.ErrorIs(t, err, ErrNotFound)
+	assert.ErrorIs(t, err, errors.ErrNotFound)
 }
 
 func TestRepository_Delete_ZeroRowsNotError(t *testing.T) {
@@ -477,4 +486,193 @@ func TestRepository_Transaction_Rollback(t *testing.T) {
 	ok, err := repo.Exists(ctx, WithConditions(map[string]any{"author": "Tina"}))
 	require.NoError(t, err)
 	assert.False(t, ok)
+}
+
+type UniqueModel struct {
+	ID    uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	Value string    `gorm:"uniqueIndex"`
+}
+
+func (UniqueModel) TableName() string { return "unique_models" }
+
+func TestRepository_Create_UniqueViolation(t *testing.T) {
+	type UniqueModel struct {
+		ID    uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+		Value string    `gorm:"uniqueIndex"`
+	}
+	db := setupPostgres(t)
+	require.NoError(t, db.AutoMigrate(&UniqueModel{}))
+	repo := NewRepository[UniqueModel](tx.NewTxManager(db), newTestLogger(), "unique_model")
+	ctx := context.Background()
+
+	err := repo.Create(ctx, &UniqueModel{Value: "dup"})
+	require.NoError(t, err)
+
+	err = repo.Create(ctx, &UniqueModel{Value: "dup"})
+	assert.ErrorIs(t, err, errors.ErrAlreadyExists)
+}
+
+func TestRepository_FindAll_IsNull(t *testing.T) {
+	repo := newRepo(setupPostgres(t))
+	ctx := context.Background()
+
+	a1 := &Article{Title: "Active", Author: "User"}
+	require.NoError(t, repo.Create(ctx, a1))
+
+	a2 := &Article{Title: "Deleted", Author: "User"}
+	require.NoError(t, repo.Create(ctx, a2))
+	_, err := repo.Delete(ctx, false, WithConditions(map[string]any{"id": a2.ID}))
+	require.NoError(t, err)
+
+	active, err := repo.FindAll(ctx, WithConditions(map[string]any{"author": "User"}))
+	require.NoError(t, err)
+	assert.Len(t, active, 1)
+	assert.Equal(t, a1.ID, active[0].ID)
+
+	deleted, err := repo.FindAll(ctx,
+		WithConditions(map[string]any{"author": "User", "deleted_at": IsNull(false)}),
+		WithDeleted(true),
+	)
+	require.NoError(t, err)
+	assert.Len(t, deleted, 1)
+	assert.Equal(t, a2.ID, deleted[0].ID)
+}
+
+func TestRepository_FindAll_WithSelect(t *testing.T) {
+	repo := newRepo(setupPostgres(t))
+	ctx := context.Background()
+
+	a := &Article{Title: "Partial", Author: "Dave", Views: 42}
+	require.NoError(t, repo.Create(ctx, a))
+
+	results, err := repo.FindAll(ctx,
+		WithConditions(map[string]any{"author": "Dave"}),
+		WithSelect("id", "title"),
+	)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+
+	assert.Equal(t, "Partial", results[0].Title)
+	assert.Empty(t, results[0].Author)
+	assert.Zero(t, results[0].Views)
+}
+
+func TestRepository_FindAll_MultipleOrder(t *testing.T) {
+	repo := newRepo(setupPostgres(t))
+	ctx := context.Background()
+
+	require.NoError(t, repo.Create(ctx, &Article{Title: "B", Author: "Zoe", Views: 2}))
+	require.NoError(t, repo.Create(ctx, &Article{Title: "A", Author: "Zoe", Views: 3}))
+	require.NoError(t, repo.Create(ctx, &Article{Title: "A", Author: "Zoe", Views: 1}))
+
+	results, err := repo.FindAll(ctx,
+		WithConditions(map[string]any{"author": "Zoe"}),
+		WithOrder(
+			Order{By: "title", Dir: OrderDirAsc},
+			Order{By: "views", Dir: OrderDirDesc},
+		),
+	)
+	require.NoError(t, err)
+	require.Len(t, results, 3)
+
+	assert.Equal(t, "A", results[0].Title)
+	assert.Equal(t, 3, results[0].Views)
+	assert.Equal(t, "A", results[1].Title)
+	assert.Equal(t, 1, results[1].Views)
+	assert.Equal(t, "B", results[2].Title)
+}
+
+func TestRepository_FindAll_WithScope(t *testing.T) {
+	repo := newRepo(setupPostgres(t))
+	ctx := context.Background()
+
+	for i := 1; i <= 3; i++ {
+		require.NoError(t, repo.Create(ctx, &Article{Title: fmt.Sprintf("Scope %d", i), Author: "Scoped", Views: i}))
+	}
+
+	results, err := repo.FindAll(ctx,
+		WithScope(func(tx *gorm.DB) *gorm.DB {
+			return tx.Where("views >= ?", 2)
+		}),
+	)
+	require.NoError(t, err)
+	assert.Len(t, results, 2)
+}
+
+func TestRepository_Count_Zero(t *testing.T) {
+	repo := newRepo(setupPostgres(t))
+	ctx := context.Background()
+
+	count, err := repo.Count(ctx, WithConditions(map[string]any{"author": "Nobody"}))
+	require.NoError(t, err)
+	assert.EqualValues(t, 0, count)
+}
+
+func TestRepository_Exists_WithConditions(t *testing.T) {
+	repo := newRepo(setupPostgres(t))
+	ctx := context.Background()
+
+	require.NoError(t, repo.Create(ctx, &Article{Title: "Exists", Author: "Leo"}))
+
+	ok, err := repo.Exists(ctx, WithConditions(map[string]any{"author": "Leo"}))
+	require.NoError(t, err)
+	assert.True(t, ok)
+
+	ok, err = repo.Exists(ctx, WithConditions(map[string]any{"author": "Leo", "views": 100}))
+	require.NoError(t, err)
+	assert.False(t, ok)
+}
+
+func TestRepository_RawQuery_MultipleParams(t *testing.T) {
+	repo := newRepo(setupPostgres(t))
+	ctx := context.Background()
+
+	for _, author := range []string{"Quinn", "Quinn", "Ray"} {
+		require.NoError(t, repo.Create(ctx, &Article{Title: "T", Author: author, Views: 10}))
+	}
+
+	results, err := repo.RawQuery(ctx,
+		`SELECT * FROM articles WHERE author = $1 AND views = $2`,
+		"Quinn", 10,
+	)
+	require.NoError(t, err)
+	assert.Len(t, results, 2)
+}
+
+func TestRepository_FindAll_PaginationPageZero(t *testing.T) {
+	repo := newRepo(setupPostgres(t))
+	ctx := context.Background()
+
+	for i := 0; i < 5; i++ {
+		require.NoError(t, repo.Create(ctx, &Article{Title: fmt.Sprintf("P%d", i), Author: "PageZero"}))
+	}
+
+	results, err := repo.FindAll(ctx,
+		WithConditions(map[string]any{"author": "PageZero"}),
+		WithPagination(Pagination{Limit: 3, Page: 0}),
+	)
+	require.NoError(t, err)
+	assert.Len(t, results, 3)
+}
+
+func TestRepository_FindAll_WithDeleted(t *testing.T) {
+	repo := newRepo(setupPostgres(t))
+	ctx := context.Background()
+
+	a := &Article{Title: "Soft", Author: "Del"}
+	require.NoError(t, repo.Create(ctx, a))
+	_, err := repo.Delete(ctx, false, WithConditions(map[string]any{"id": a.ID}))
+	require.NoError(t, err)
+
+	all, err := repo.FindAll(ctx, WithConditions(map[string]any{"author": "Del"}))
+	require.NoError(t, err)
+	assert.Len(t, all, 0)
+
+	deleted, err := repo.FindAll(ctx,
+		WithConditions(map[string]any{"author": "Del"}),
+		WithDeleted(true),
+	)
+	require.NoError(t, err)
+	assert.Len(t, deleted, 1)
+	assert.Equal(t, a.ID, deleted[0].ID)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ssoeasy-dev/pkg/errors"
 	"gorm.io/gorm"
 )
 
@@ -37,7 +38,7 @@ func NewTxManager(db *gorm.DB) TxManager {
 func (m *txManager) Begin(ctx context.Context) (context.Context, error) {
 	tx := m.db.WithContext(ctx).Begin()
 	if tx.Error != nil {
-		return ctx, fmt.Errorf("%w: %v", ErrTxBegin, tx.Error)
+		return ctx, fmt.Errorf("%w: %v", errors.ErrTxBegin, tx.Error)
 	}
 	return context.WithValue(ctx, txKey{}, tx), nil
 }
@@ -45,10 +46,10 @@ func (m *txManager) Begin(ctx context.Context) (context.Context, error) {
 func (m *txManager) Commit(ctx context.Context) error {
 	tx, ok := ctx.Value(txKey{}).(*gorm.DB)
 	if !ok {
-		return ErrTxCommit
+		return errors.ErrTxCommit
 	}
 	if err := tx.Commit().Error; err != nil {
-		return fmt.Errorf("%w: %v", ErrTxCommit, err)
+		return fmt.Errorf("%w: %v", errors.ErrTxCommit, err)
 	}
 	return nil
 }
@@ -56,10 +57,10 @@ func (m *txManager) Commit(ctx context.Context) error {
 func (m *txManager) Rollback(ctx context.Context) error {
 	tx, ok := ctx.Value(txKey{}).(*gorm.DB)
 	if !ok {
-		return ErrTxRollback
+		return errors.ErrTxRollback
 	}
 	if err := tx.Rollback().Error; err != nil {
-		return fmt.Errorf("%w: %v", ErrTxRollback, err)
+		return fmt.Errorf("%w: %v", errors.ErrTxRollback, err)
 	}
 	return nil
 }
@@ -86,8 +87,7 @@ func (m *txManager) WithTransaction(ctx context.Context, fn func(ctx context.Con
 
 	if err = fn(txCtx); err != nil {
 		if rbErr := m.Rollback(txCtx); rbErr != nil {
-			// Оба упали: оборачиваем оба, чтобы не потерять оригинальную ошибку.
-			return fmt.Errorf("rollback failed: %w; original error: %v", rbErr, err)
+			return fmt.Errorf("rollback failed: %w; original error: %w", rbErr, err)
 		}
 		return err
 	}

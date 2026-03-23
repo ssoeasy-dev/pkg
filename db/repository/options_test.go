@@ -1,6 +1,7 @@
 package repository_test
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -79,17 +80,17 @@ func TestWithConditions_TwoMapsProduceOR(t *testing.T) {
 }
 
 func TestWithConditions_ORGroupingIsCorrect(t *testing.T) {
-	// (login='alice' AND views=0) OR (login='bob' AND views=99)
-	// SQL должен содержать оба условия в правильной группировке
 	sql := buildSQL(t,
 		WithConditions(
 			map[string]any{"login": "alice", "views": 0},
 			map[string]any{"login": "bob", "views": 99},
 		),
 	)
-	assert.Contains(t, strings.ToUpper(sql), " OR ")
-	assert.Contains(t, sql, "login")
-	assert.Contains(t, sql, "views")
+	// Ожидаем: (login = ? AND views = ?) OR (login = ? AND views = ?)
+	// В SQLite это может быть: (`test_models`.`login` = ? AND `test_models`.`views` = ?) OR (`test_models`.`login` = ? AND `test_models`.`views` = ?)
+	// Проверим, что обе группы обёрнуты в скобки и между ними OR
+	re := regexp.MustCompile(`\([^)]+\)\s+OR\s+\([^)]+\)`)
+	assert.True(t, re.MatchString(sql), "SQL должен содержать две группы в скобках, объединённые OR: %s", sql)
 }
 
 func TestWithConditions_Like(t *testing.T) {

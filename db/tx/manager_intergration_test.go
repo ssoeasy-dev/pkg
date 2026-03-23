@@ -4,11 +4,11 @@ package tx_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/ssoeasy-dev/pkg/db/tx"
+	"github.com/ssoeasy-dev/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	testcontainerspg "github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -77,7 +77,7 @@ func TestTxManager_WithTransaction_Rollback_OnFnError(t *testing.T) {
 	mgr := tx.NewTxManager(db)
 
 	id := uuid.New()
-	expectedErr := errors.New("intentional error")
+	expectedErr := errors.New(errors.ErrTxRollback, "intentional error")
 	err := mgr.WithTransaction(context.Background(), func(ctx context.Context) error {
 		_ = mgr.GetDB(ctx).Create(&TxArticle{ID: id, Title: "should rollback"})
 		return expectedErr
@@ -218,7 +218,7 @@ func TestTxManager_Commit_NoTx_ReturnsErrCommit(t *testing.T) {
 	mgr := tx.NewTxManager(db)
 
 	err := mgr.Commit(context.Background())
-	require.ErrorIs(t, err, tx.ErrTxCommit)
+	require.ErrorIs(t, err, errors.ErrTxCommit)
 }
 
 func TestTxManager_Rollback_NoTx_ReturnsErrRollback(t *testing.T) {
@@ -226,5 +226,5 @@ func TestTxManager_Rollback_NoTx_ReturnsErrRollback(t *testing.T) {
 	mgr := tx.NewTxManager(db)
 
 	err := mgr.Rollback(context.Background())
-	require.ErrorIs(t, err, tx.ErrTxRollback)
+	require.ErrorIs(t, err, errors.ErrTxRollback)
 }

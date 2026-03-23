@@ -3,6 +3,7 @@ package tx
 import (
 	"context"
 
+	"github.com/ssoeasy-dev/pkg/errors"
 	"github.com/ssoeasy-dev/pkg/logger"
 	"github.com/stretchr/testify/mock"
 	"gorm.io/gorm"
@@ -18,11 +19,11 @@ import (
 //	mgr.AssertExpectations(t)
 type MockTxManager struct {
 	mock.Mock
-	log *logger.Logger // nil допустим
+	log logger.Logger // nil допустим
 }
 
 // NewMockTxManager создаёт MockTxManager. log может быть nil.
-func NewMockTxManager(log *logger.Logger) *MockTxManager {
+func NewMockTxManager(log logger.Logger) *MockTxManager {
 	return &MockTxManager{log: log}
 }
 
@@ -102,7 +103,7 @@ func (m *MockTxManager) WithTransactionalRollback(ctx context.Context, returnErr
 // ErrTxBegin, не вызывая fn.
 func (m *MockTxManager) WithTransactionErrBegin(ctx context.Context) {
 	m.On("WithTransaction", ctx, mock.AnythingOfType("func(context.Context) error")).
-		Return(ErrTxBegin)
+		Return(errors.ErrTxBegin)
 }
 
 // WithTransactionErrCommit настраивает mock так, чтобы fn был вызван,
@@ -117,7 +118,7 @@ func (m *MockTxManager) WithTransactionErrCommit(ctx context.Context) {
 				})
 			}
 		}).
-		Return(ErrTxCommit)
+		Return(errors.ErrTxCommit)
 }
 
 // WithTransactionErrRollback настраивает mock так, чтобы fn был вызван,
@@ -132,5 +133,5 @@ func (m *MockTxManager) WithTransactionErrRollback(ctx context.Context) {
 				})
 			}
 		}).
-		Return(ErrTxRollback)
+		Return(errors.ErrTxRollback)
 }

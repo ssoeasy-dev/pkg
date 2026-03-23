@@ -18,7 +18,7 @@ type DB struct {
 
 // NewDB создаёт подключение к PostgreSQL.
 // Уровень логирования GORM определяется через cfg.Environment.
-func NewDB(cfg *Config, log *logger.Logger) (*DB, error) {
+func NewDB(cfg *Config, log logger.Logger) (*DB, error) {
 	logLevel := gormLogger.Silent
 	if cfg.Environment.IsVerbose() {
 		logLevel = gormLogger.Info

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/stretchr/testify/mock"
+	"github.com/ssoeasy-dev/pkg/errors"
 	"gorm.io/gorm"
 )
 
@@ -82,11 +83,11 @@ func (m *MockRepository[Model]) OnCreate(ctx context.Context) {
 }
 
 func (m *MockRepository[Model]) CreateErrAlreadyExists(ctx context.Context) {
-	m.On("Create", ctx, mock.Anything, mock.Anything).Return(ErrAlreadyExists)
+	m.On("Create", ctx, mock.Anything, mock.Anything).Return(errors.ErrAlreadyExists)
 }
 
 func (m *MockRepository[Model]) CreateErrCreateFailed(ctx context.Context) {
-	m.On("Create", ctx, mock.Anything, mock.Anything).Return(ErrCreationFailed)
+	m.On("Create", ctx, mock.Anything, mock.Anything).Return(errors.ErrCreationFailed)
 }
 
 // ─── Update helpers ───────────────────────────────────────────────────────────
@@ -96,11 +97,11 @@ func (m *MockRepository[Model]) OnUpdate(ctx context.Context, affected int64) {
 }
 
 func (m *MockRepository[Model]) UpdateErrNotFound(ctx context.Context) {
-	m.On("Update", ctx, mock.Anything, mock.Anything).Return(int64(0), ErrNotFound)
+	m.On("Update", ctx, mock.Anything, mock.Anything).Return(int64(0), errors.ErrNotFound)
 }
 
 func (m *MockRepository[Model]) UpdateErrUpdateFailed(ctx context.Context) {
-	m.On("Update", ctx, mock.Anything, mock.Anything).Return(int64(0), ErrUpdateFailed)
+	m.On("Update", ctx, mock.Anything, mock.Anything).Return(int64(0), errors.ErrUpdateFailed)
 }
 
 // ─── Delete helpers ───────────────────────────────────────────────────────────
@@ -110,11 +111,11 @@ func (m *MockRepository[Model]) OnDelete(ctx context.Context, affected int64) {
 }
 
 func (m *MockRepository[Model]) DeleteErrNotFound(ctx context.Context) {
-	m.On("Delete", ctx, mock.Anything, mock.Anything).Return(int64(0), ErrNotFound)
+	m.On("Delete", ctx, mock.Anything, mock.Anything).Return(int64(0), errors.ErrNotFound)
 }
 
 func (m *MockRepository[Model]) DeleteErrDeleteFailed(ctx context.Context) {
-	m.On("Delete", ctx, mock.Anything, mock.Anything).Return(int64(0), ErrDeleteFailed)
+	m.On("Delete", ctx, mock.Anything, mock.Anything).Return(int64(0), errors.ErrDeleteFailed)
 }
 
 // ─── FindOne helpers ──────────────────────────────────────────────────────────
@@ -124,11 +125,11 @@ func (m *MockRepository[Model]) OnFindOneReturn(ctx context.Context, model *Mode
 }
 
 func (m *MockRepository[Model]) FindOneErrNotFound(ctx context.Context) {
-	m.On("FindOne", ctx, mock.Anything).Return(nil, ErrNotFound)
+	m.On("FindOne", ctx, mock.Anything).Return(nil, errors.ErrNotFound)
 }
 
 func (m *MockRepository[Model]) FindOneErrGetFailed(ctx context.Context) {
-	m.On("FindOne", ctx, mock.Anything).Return(nil, ErrGetFailed)
+	m.On("FindOne", ctx, mock.Anything).Return(nil, errors.ErrGetFailed)
 }
 
 // ─── FindAll helpers ──────────────────────────────────────────────────────────
@@ -138,7 +139,7 @@ func (m *MockRepository[Model]) OnFindAllReturn(ctx context.Context, models []Mo
 }
 
 func (m *MockRepository[Model]) FindAllErrGetFailed(ctx context.Context) {
-	m.On("FindAll", ctx, mock.Anything).Return(nil, ErrGetFailed)
+	m.On("FindAll", ctx, mock.Anything).Return(nil, errors.ErrGetFailed)
 }
 
 // ─── Count helpers ────────────────────────────────────────────────────────────
@@ -148,7 +149,7 @@ func (m *MockRepository[Model]) OnCountReturn(ctx context.Context, count int64) 
 }
 
 func (m *MockRepository[Model]) CountErrGetFailed(ctx context.Context) {
-	m.On("Count", ctx, mock.Anything).Return(int64(0), ErrGetFailed)
+	m.On("Count", ctx, mock.Anything).Return(int64(0), errors.ErrGetFailed)
 }
 
 // ─── Exists helpers ───────────────────────────────────────────────────────────
@@ -158,7 +159,7 @@ func (m *MockRepository[Model]) OnExistsReturn(ctx context.Context, exists bool)
 }
 
 func (m *MockRepository[Model]) ExistsErrGetFailed(ctx context.Context) {
-	m.On("Exists", ctx, mock.Anything).Return(false, ErrGetFailed)
+	m.On("Exists", ctx, mock.Anything).Return(false, errors.ErrGetFailed)
 }
 
 // ─── DB helpers ───────────────────────────────────────────────────────────────

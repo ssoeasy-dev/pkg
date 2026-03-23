@@ -11,6 +11,7 @@
 | `grpc`   | `github.com/ssoeasy-dev/pkg/grpc`   | v1.0.2           | Настройка gRPC-сервера с интерцепторами               |
 | `rmq`    | `github.com/ssoeasy-dev/pkg/rmq`    | v1.0.4           | RabbitMQ клиент и consumer с retry/DLQ логикой        |
 | `s3`     | `github.com/ssoeasy-dev/pkg/s3`     | v1.0.3           | Generic S3 клиент (AWS, Tinkoff, Yandex, MinIO)       |
+| `errors` | `github.com/ssoeasy-dev/pkg/errors` | v1.0.0           | Кастомная обработка ошибок с Kind                     |
 
 ## Структура репозитория
 
@@ -28,10 +29,18 @@ pkg/
 │   ├── client.go        # RabbitMQ клиент
 │   ├── consumer.go      # Consumer с retry, delay queue, DLQ
 │   └── go.mod
-└── s3/
-    ├── client.go        # S3 клиент: Put, Get, Head, List, Presign
-    ├── config.go        # Config struct
-    └── go.mod
+├── s3/
+│   ├── client.go        # S3 клиент: Put, Get, Head, List, Presign
+│   ├── config.go        # Config struct
+│   └── go.mod
+└── errors/
+    ├── error_test.go
+    ├── error.go
+    ├── go.mod
+    ├── kind.go
+    ├── README.md
+    ├── verbose_error_test.go
+    └── verbose_error.go
 ```
 
 ## Установка
@@ -44,6 +53,7 @@ go get github.com/ssoeasy-dev/pkg/logger@latest
 go get github.com/ssoeasy-dev/pkg/grpc@latest
 go get github.com/ssoeasy-dev/pkg/rmq@latest
 go get github.com/ssoeasy-dev/pkg/s3@latest
+go get github.com/ssoeasy-dev/pkg/errors@latest
 ```
 
 Или конкретную версию:

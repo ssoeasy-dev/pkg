@@ -6,7 +6,7 @@ import (
 )
 
 type Kinded interface {
-    Kind() error
+	Kind() error
 }
 
 var (

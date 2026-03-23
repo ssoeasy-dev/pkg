@@ -1,10 +1,11 @@
 module github.com/ssoeasy-dev/pkg/grpc
 
-go 1.24.1
+go 1.24.11
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/ssoeasy-dev/pkg/logger v1.0.1
+	github.com/ssoeasy-dev/pkg/errors v1.0.0
+	github.com/ssoeasy-dev/pkg/logger v1.0.2
 	google.golang.org/grpc v1.77.0
 )
 

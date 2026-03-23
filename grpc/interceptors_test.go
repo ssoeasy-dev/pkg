@@ -2,14 +2,15 @@ package grpc_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 
+	"github.com/ssoeasy-dev/pkg/errors"
 	pkggrpc "github.com/ssoeasy-dev/pkg/grpc"
 	"github.com/ssoeasy-dev/pkg/logger"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	goGrpc "google.golang.org/grpc"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -17,27 +18,27 @@ import (
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-func testLogger() *logger.Logger {
+func testLogger() logger.Logger {
 	return logger.NewLogger(logger.EnvironmentTest, "test")
 }
 
 // captureCtxHandler stores the context passed by the interceptor.
-func captureCtxHandler(out *context.Context) goGrpc.UnaryHandler {
+func captureCtxHandler(out *context.Context) grpc.UnaryHandler {
 	return func(ctx context.Context, _ any) (any, error) {
 		*out = ctx
 		return nil, nil
 	}
 }
 
-func okHandler() goGrpc.UnaryHandler {
+func okHandler() grpc.UnaryHandler {
 	return func(ctx context.Context, _ any) (any, error) { return "ok", nil }
 }
 
-func errHandler(err error) goGrpc.UnaryHandler {
+func errHandler(err error) grpc.UnaryHandler {
 	return func(ctx context.Context, _ any) (any, error) { return nil, err }
 }
 
-func panicHandler(val any) goGrpc.UnaryHandler {
+func panicHandler(val any) grpc.UnaryHandler {
 	return func(ctx context.Context, _ any) (any, error) { panic(val) }
 }
 
@@ -49,7 +50,7 @@ func ctxWithMetadata(key, value string) context.Context {
 
 // mockStream is a minimal grpc.ServerStream for stream interceptor tests.
 type mockStream struct {
-	goGrpc.ServerStream
+	grpc.ServerStream
 	ctx context.Context
 }
 
@@ -164,7 +165,7 @@ func TestTraceAndRequestIDInterceptors_StoreSeparateKeys(t *testing.T) {
 
 func TestLoggingInterceptor_SuccessfulCall_ReturnsResponse(t *testing.T) {
 	interceptor := pkggrpc.LoggingInterceptor(testLogger())
-	info := &goGrpc.UnaryServerInfo{FullMethod: "/pkg.Test/Method"}
+	info := &grpc.UnaryServerInfo{FullMethod: "/pkg.Test/Method"}
 
 	resp, err := interceptor(context.Background(), nil, info, func(ctx context.Context, _ any) (any, error) {
 		return "hello", nil
@@ -175,7 +176,7 @@ func TestLoggingInterceptor_SuccessfulCall_ReturnsResponse(t *testing.T) {
 
 func TestLoggingInterceptor_FailedCall_PropagatesError(t *testing.T) {
 	interceptor := pkggrpc.LoggingInterceptor(testLogger())
-	info := &goGrpc.UnaryServerInfo{FullMethod: "/pkg.Test/Method"}
+	info := &grpc.UnaryServerInfo{FullMethod: "/pkg.Test/Method"}
 	handlerErr := status.Error(codes.NotFound, "not found")
 
 	_, err := interceptor(context.Background(), nil, info, errHandler(handlerErr))
@@ -184,8 +185,8 @@ func TestLoggingInterceptor_FailedCall_PropagatesError(t *testing.T) {
 
 func TestLoggingInterceptor_NonGRPCError_PropagatesError(t *testing.T) {
 	interceptor := pkggrpc.LoggingInterceptor(testLogger())
-	info := &goGrpc.UnaryServerInfo{FullMethod: "/pkg.Test/Method"}
-	handlerErr := errors.New("raw error")
+	info := &grpc.UnaryServerInfo{FullMethod: "/pkg.Test/Method"}
+	handlerErr := errors.New(errors.ErrUnknown, "raw error")
 
 	_, err := interceptor(context.Background(), nil, info, errHandler(handlerErr))
 	assert.ErrorIs(t, err, handlerErr)
@@ -195,7 +196,7 @@ func TestLoggingInterceptor_NonGRPCError_PropagatesError(t *testing.T) {
 
 func TestRecoveryInterceptor_NoPanic_PassesThrough(t *testing.T) {
 	interceptor := pkggrpc.RecoveryInterceptor(testLogger())
-	info := &goGrpc.UnaryServerInfo{FullMethod: "/pkg.Test/Method"}
+	info := &grpc.UnaryServerInfo{FullMethod: "/pkg.Test/Method"}
 
 	resp, err := interceptor(context.Background(), nil, info, okHandler())
 	require.NoError(t, err)
@@ -204,7 +205,7 @@ func TestRecoveryInterceptor_NoPanic_PassesThrough(t *testing.T) {
 
 func TestRecoveryInterceptor_PanicWithString_ReturnsInternal(t *testing.T) {
 	interceptor := pkggrpc.RecoveryInterceptor(testLogger())
-	info := &goGrpc.UnaryServerInfo{FullMethod: "/pkg.Test/Method"}
+	info := &grpc.UnaryServerInfo{FullMethod: "/pkg.Test/Method"}
 
 	_, err := interceptor(context.Background(), nil, info, panicHandler("something crashed"))
 	require.Error(t, err)
@@ -216,9 +217,9 @@ func TestRecoveryInterceptor_PanicWithString_ReturnsInternal(t *testing.T) {
 
 func TestRecoveryInterceptor_PanicWithError_ReturnsInternal(t *testing.T) {
 	interceptor := pkggrpc.RecoveryInterceptor(testLogger())
-	info := &goGrpc.UnaryServerInfo{FullMethod: "/pkg.Test/Method"}
+	info := &grpc.UnaryServerInfo{FullMethod: "/pkg.Test/Method"}
 
-	_, err := interceptor(context.Background(), nil, info, panicHandler(errors.New("oops")))
+	_, err := interceptor(context.Background(), nil, info, panicHandler(errors.New(errors.ErrUnknown, "oops")))
 	require.Error(t, err)
 
 	st, _ := status.FromError(err)
@@ -228,7 +229,7 @@ func TestRecoveryInterceptor_PanicWithError_ReturnsInternal(t *testing.T) {
 func TestRecoveryInterceptor_HandlerError_IsNotRecovered(t *testing.T) {
 	// A non-panic error must not be swallowed by the recovery interceptor.
 	interceptor := pkggrpc.RecoveryInterceptor(testLogger())
-	info := &goGrpc.UnaryServerInfo{FullMethod: "/pkg.Test/Method"}
+	info := &grpc.UnaryServerInfo{FullMethod: "/pkg.Test/Method"}
 	handlerErr := status.Error(codes.InvalidArgument, "bad input")
 
 	_, err := interceptor(context.Background(), nil, info, errHandler(handlerErr))
@@ -240,9 +241,9 @@ func TestRecoveryInterceptor_HandlerError_IsNotRecovered(t *testing.T) {
 func TestStreamRecoveryInterceptor_NoPanic_PassesThrough(t *testing.T) {
 	interceptor := pkggrpc.StreamRecoveryInterceptor(testLogger())
 	stream := &mockStream{ctx: context.Background()}
-	info := &goGrpc.StreamServerInfo{FullMethod: "/pkg.Test/Stream"}
+	info := &grpc.StreamServerInfo{FullMethod: "/pkg.Test/Stream"}
 
-	err := interceptor(nil, stream, info, func(_ any, _ goGrpc.ServerStream) error {
+	err := interceptor(nil, stream, info, func(_ any, _ grpc.ServerStream) error {
 		return nil
 	})
 	require.NoError(t, err)
@@ -251,10 +252,10 @@ func TestStreamRecoveryInterceptor_NoPanic_PassesThrough(t *testing.T) {
 func TestStreamRecoveryInterceptor_HandlerError_PassesThrough(t *testing.T) {
 	interceptor := pkggrpc.StreamRecoveryInterceptor(testLogger())
 	stream := &mockStream{ctx: context.Background()}
-	info := &goGrpc.StreamServerInfo{FullMethod: "/pkg.Test/Stream"}
+	info := &grpc.StreamServerInfo{FullMethod: "/pkg.Test/Stream"}
 	handlerErr := status.Error(codes.Unavailable, "unavailable")
 
-	err := interceptor(nil, stream, info, func(_ any, _ goGrpc.ServerStream) error {
+	err := interceptor(nil, stream, info, func(_ any, _ grpc.ServerStream) error {
 		return handlerErr
 	})
 	assert.ErrorIs(t, err, handlerErr)
@@ -266,9 +267,9 @@ func TestStreamRecoveryInterceptor_HandlerError_PassesThrough(t *testing.T) {
 func TestStreamRecoveryInterceptor_Panic_ReturnsInternal(t *testing.T) {
 	interceptor := pkggrpc.StreamRecoveryInterceptor(testLogger())
 	stream := &mockStream{ctx: context.Background()}
-	info := &goGrpc.StreamServerInfo{FullMethod: "/pkg.Test/Stream"}
+	info := &grpc.StreamServerInfo{FullMethod: "/pkg.Test/Stream"}
 
-	err := interceptor(nil, stream, info, func(_ any, _ goGrpc.ServerStream) error {
+	err := interceptor(nil, stream, info, func(_ any, _ grpc.ServerStream) error {
 		panic("stream handler exploded")
 	})
 	require.Error(t, err, "expected non-nil error after panic — not nil (the old bug)")
@@ -281,10 +282,10 @@ func TestStreamRecoveryInterceptor_Panic_ReturnsInternal(t *testing.T) {
 func TestStreamRecoveryInterceptor_PanicWithError_ReturnsInternal(t *testing.T) {
 	interceptor := pkggrpc.StreamRecoveryInterceptor(testLogger())
 	stream := &mockStream{ctx: context.Background()}
-	info := &goGrpc.StreamServerInfo{FullMethod: "/pkg.Test/Stream"}
+	info := &grpc.StreamServerInfo{FullMethod: "/pkg.Test/Stream"}
 
-	err := interceptor(nil, stream, info, func(_ any, _ goGrpc.ServerStream) error {
-		panic(errors.New("wrapped panic"))
+	err := interceptor(nil, stream, info, func(_ any, _ grpc.ServerStream) error {
+		panic(errors.New(errors.ErrUnknown, "wrapped panic"))
 	})
 
 	st, ok := status.FromError(err)

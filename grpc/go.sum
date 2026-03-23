@@ -24,8 +24,10 @@ github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH
 github.com/rogpeppe/go-internal v1.9.0/go.mod h1:WtVeX8xhTBvf0smdhujwtBcq4Qrzq/fJaraNFVN+nFs=
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
-github.com/ssoeasy-dev/pkg/logger v1.0.1 h1:vPD2rDOzQwtVbbXCGgkIlEEgq4HKxkIJeKl2qnbj6Pw=
-github.com/ssoeasy-dev/pkg/logger v1.0.1/go.mod h1:QA7Y8u3ZyScm/IECqgpdJRE1iY/z/2Kx9T4HogEm8is=
+github.com/ssoeasy-dev/pkg/errors v1.0.0 h1:ACsKxXLIcER/y45I5XXWwv2zytj4Rs05Q7fiozEHvKM=
+github.com/ssoeasy-dev/pkg/errors v1.0.0/go.mod h1:cbDrtfvAla/o9OUx6C7Be9Bmiz8mwv56Zs6cDih9bjw=
+github.com/ssoeasy-dev/pkg/logger v1.0.2 h1:u90bFJ5vLAHDPU0nbxMxJ2hprBCjxXLGn3UcNw3PAdQ=
+github.com/ssoeasy-dev/pkg/logger v1.0.2/go.mod h1:QA7Y8u3ZyScm/IECqgpdJRE1iY/z/2Kx9T4HogEm8is=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=

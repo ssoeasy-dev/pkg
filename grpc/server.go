@@ -6,7 +6,8 @@ import (
 	"net"
 
 	"github.com/ssoeasy-dev/pkg/logger"
-	goGrpc "google.golang.org/grpc"
+
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
 
@@ -14,9 +15,9 @@ import (
 // It is pre-configured with trace-ID propagation, request-ID propagation,
 // structured logging, and panic recovery on both unary and stream RPCs.
 type Server struct {
-	server *goGrpc.Server
+	server *grpc.Server
 	addr   string
-	log    *logger.Logger
+	log    logger.Logger
 }
 
 // Interceptors holds optional application-level interceptors that are appended
@@ -31,10 +32,10 @@ type Server struct {
 type Interceptors struct {
 	// Unary interceptors appended after the built-in unary chain.
 	// Order: TraceID → RequestID → Logging → Unary[0] → Unary[1] → ... → Recovery
-	Unary []goGrpc.UnaryServerInterceptor
+	Unary []grpc.UnaryServerInterceptor
 	// Stream interceptors appended after StreamRecoveryInterceptor.
 	// Order: Stream[0] → Stream[1] → ... → StreamRecovery
-	Stream []goGrpc.StreamServerInterceptor
+	Stream []grpc.StreamServerInterceptor
 }
 
 // NewServer creates a Server that listens on addr (e.g. "0.0.0.0:50051").
@@ -50,39 +51,33 @@ type Interceptors struct {
 // any interceptors in intercepts.Stream.
 //
 // intercepts may be nil.
-func NewServer(addr string, log *logger.Logger, intercepts *Interceptors) *Server {
-	unaryIntercepts := make([]goGrpc.UnaryServerInterceptor, 0)
-	unaryIntercepts = append(
-		unaryIntercepts,
+func NewServer(addr string, log logger.Logger, intercepts *Interceptors) *Server {
+	// Unary цепочка: встроенные → пользовательские → Recovery
+	unaryIntercepts := []grpc.UnaryServerInterceptor{
 		TraceIDInterceptor(),
 		RequestIDInterceptor(),
 		LoggingInterceptor(log),
-		RecoveryInterceptor(log),
-	)
+	}
 	if intercepts != nil {
 		unaryIntercepts = append(unaryIntercepts, intercepts.Unary...)
 	}
-	unaryIntercepts = append(
-		unaryIntercepts,
-		RecoveryInterceptor(log),
-	)
+	// Recovery должен быть последним, чтобы ловить паники в пользовательских интерсепторах
+	unaryIntercepts = append(unaryIntercepts, RecoveryInterceptor(log))
 
-	streamIntercepts := make([]goGrpc.StreamServerInterceptor, 0)
+	// Stream цепочка: встроенные → пользовательские → Recovery
+	streamIntercepts := []grpc.StreamServerInterceptor{
+		StreamTraceIDInterceptor(),
+		StreamRequestIDInterceptor(),
+		StreamLoggingInterceptor(log),
+	}
 	if intercepts != nil {
 		streamIntercepts = append(streamIntercepts, intercepts.Stream...)
 	}
-	streamIntercepts = append(
-		streamIntercepts,
-		StreamRecoveryInterceptor(log),
-	)
+	streamIntercepts = append(streamIntercepts, StreamRecoveryInterceptor(log))
 
-	srv := goGrpc.NewServer(
-		goGrpc.ChainUnaryInterceptor(
-			unaryIntercepts...,
-		),
-		goGrpc.ChainStreamInterceptor(
-			streamIntercepts...,
-		),
+	srv := grpc.NewServer(
+		grpc.ChainUnaryInterceptor(unaryIntercepts...),
+		grpc.ChainStreamInterceptor(streamIntercepts...),
 	)
 
 	return &Server{
@@ -95,7 +90,7 @@ func NewServer(addr string, log *logger.Logger, intercepts *Interceptors) *Serve
 // GetGRPCServer returns the underlying *grpc.Server for service registration.
 //
 //	pb.RegisterMyServiceServer(srv.GetGRPCServer(), &myHandler{})
-func (s *Server) GetGRPCServer() *goGrpc.Server {
+func (s *Server) GetGRPCServer() *grpc.Server {
 	return s.server
 }
 

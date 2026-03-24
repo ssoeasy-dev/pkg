@@ -5,6 +5,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/ssoeasy-dev/pkg/errors"
 )
@@ -14,6 +15,7 @@ type Client struct {
 	s3Client      *s3.Client
 	bucket        string
 	presignClient *s3.PresignClient
+	tmClient      *transfermanager.Client // новый менеджер загрузок
 }
 
 // NewClient creates a new S3 client with the given configuration.
@@ -33,8 +35,6 @@ func NewClientWithContext(ctx context.Context, cfg *Config) (*Client, error) {
 		return nil, errors.New(errors.ErrInvalidArgument, "access key and secret key are required")
 	}
 
-	// Собираем конфигурацию AWS вручную, чтобы гарантированно использовать
-	// переданные учётные данные, а не из окружения.
 	awsCfg := aws.Config{
 		Region: cfg.Region,
 		Credentials: credentials.NewStaticCredentialsProvider(
@@ -51,15 +51,18 @@ func NewClientWithContext(ctx context.Context, cfg *Config) (*Client, error) {
 		if cfg.Endpoint != "" {
 			o.BaseEndpoint = aws.String(cfg.Endpoint)
 		}
-		// Явно задаём вычисление и проверку контрольных сумм (поведение по умолчанию,
-		// но оставляем для ясности).
 		o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
 		o.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
 	})
+
+	// Создаём клиент transfer manager с настройками по умолчанию.
+	// При необходимости можно настроить concurrency и part size.
+	tmClient := transfermanager.New(client)
 
 	return &Client{
 		s3Client:      client,
 		bucket:        cfg.Bucket,
 		presignClient: s3.NewPresignClient(client),
+		tmClient:      tmClient,
 	}, nil
 }

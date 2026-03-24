@@ -19,16 +19,16 @@ func TestVerboseError_WrapAndUnwrap(t *testing.T) {
 }
 
 func TestVerboseError_ErrorString(t *testing.T) {
-    kind := errors.ErrNotFound
-    wrapped := errors.NewVerbose(kind, "user %s not found", "john")
-    // Ожидаем, что Error() возвращает полное сообщение с деталями
-    assert.Equal(t, "user john not found", wrapped.Error())
+	kind := errors.ErrNotFound
+	wrapped := errors.NewVerbose(kind, "user %s not found", "john")
+	// Ожидаем, что Error() возвращает полное сообщение с деталями
+	assert.Equal(t, "user john not found", wrapped.Error())
 }
 
 func TestVerboseError_Kind(t *testing.T) {
-    kind := errors.ErrNotFound
-    wrapped := errors.NewVerbose(kind, "details")
-    assert.Equal(t, kind, wrapped.(errors.Kinded).Kind())
+	kind := errors.ErrNotFound
+	wrapped := errors.NewVerbose(kind, "details")
+	assert.Equal(t, kind, wrapped.(errors.Kinded).Kind())
 }
 
 func TestVerboseError_Is(t *testing.T) {
@@ -44,10 +44,10 @@ func TestVerboseError_Is(t *testing.T) {
 }
 
 func TestVerboseError_As(t *testing.T) {
-    kind := errors.ErrNotFound
-    wrapped := errors.NewVerbose(kind, "test")
+	kind := errors.ErrNotFound
+	wrapped := errors.NewVerbose(kind, "test")
 
-    var target errors.Kinded
-    assert.True(t, errors.As(wrapped, &target))
-    assert.Equal(t, kind, target.Kind())
+	var target errors.Kinded
+	assert.True(t, errors.As(wrapped, &target))
+	assert.Equal(t, kind, target.Kind())
 }

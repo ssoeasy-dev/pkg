@@ -24,7 +24,7 @@ jobs:
       - name: Detect changed packages
         id: detect
         run: |
-          ALL_PACKAGES='["db","logger","grpc","rmq","s3","errors"]'
+          ALL_PACKAGES='["errors"]'
 
           # При первом коммите или если нет предыдущего — релизим всё
           if [ -z "${{ github.event.before }}" ] || \

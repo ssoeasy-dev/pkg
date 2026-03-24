@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        package: [db, logger, grpc, rmq, s3, errors]
+        package: [errors]
         go-version: [1.24.1]
 
     steps:

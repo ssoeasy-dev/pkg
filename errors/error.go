@@ -11,11 +11,11 @@ type Error struct {
 }
 
 func (e Error) Error() string {
-	return e.kind.Error()
+    return e.kind.Error()
 }
 
 func (e Error) Kind() error {
-	return e.kind
+    return e.kind
 }
 
 func (e Error) Unwrap() error {

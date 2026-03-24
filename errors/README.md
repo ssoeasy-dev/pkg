@@ -215,3 +215,4 @@ MIT — см. [LICENSE](../LICENSE).
 - Email: [morewiktor@yandex.ru](mailto:morewiktor@yandex.ru)
 - Telegram: [@MoreWiktor](https://t.me/MoreWiktor)
 - GitHub: [@MoreWiktor](https://github.com/MoreWiktor)
+

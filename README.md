@@ -4,39 +4,19 @@
 
 ## Пакеты
 
-| Пакет    | Модуль                              | Последняя версия | Описание                                              |
-| -------- | ----------------------------------- | ---------------- | ----------------------------------------------------- |
-| `db`     | `github.com/ssoeasy-dev/pkg/db`     | v1.0.10          | Generic репозиторий поверх GORM + transaction manager |
-| `logger` | `github.com/ssoeasy-dev/pkg/logger` | v1.0.1           | Структурированный логгер                              |
-| `grpc`   | `github.com/ssoeasy-dev/pkg/grpc`   | v1.0.2           | Настройка gRPC-сервера с интерцепторами               |
-| `rmq`    | `github.com/ssoeasy-dev/pkg/rmq`    | v1.0.4           | RabbitMQ клиент и consumer с retry/DLQ логикой        |
-| `s3`     | `github.com/ssoeasy-dev/pkg/s3`     | v1.0.3           | Generic S3 клиент (AWS, Tinkoff, Yandex, MinIO)       |
-| `errors` | `github.com/ssoeasy-dev/pkg/errors` | v1.0.0           | Кастомная обработка ошибок с Kind                     |
+| Пакет    | Модуль                              | Последняя версия | Описание                                        |
+| -------- | ----------------------------------- | ---------------- | ----------------------------------------------- |
+| `errors` | `github.com/ssoeasy-dev/pkg/errors` | v1.0.0           | Кастомная обработка ошибок с Kind               |
 
 ## Структура репозитория
 
 ```
 pkg/
-├── db/
-│   ├── repository/      # Generic Repository[Model], опции запросов
-│   ├── tx/              # TxManager — управление транзакциями
-│   └── go.mod
-├── logger/
-│   └── go.mod
-├── grpc/
-│   └── go.mod
-├── rmq/
-│   ├── client.go        # RabbitMQ клиент
-│   ├── consumer.go      # Consumer с retry, delay queue, DLQ
-│   └── go.mod
-├── s3/
-│   ├── client.go        # S3 клиент: Put, Get, Head, List, Presign
-│   ├── config.go        # Config struct
-│   └── go.mod
 └── errors/
     ├── error_test.go
     ├── error.go
     ├── go.mod
+    ├── go.sum
     ├── kind.go
     ├── README.md
     ├── verbose_error_test.go
@@ -48,18 +28,13 @@ pkg/
 Каждый пакет устанавливается отдельно:
 
 ```bash
-go get github.com/ssoeasy-dev/pkg/db@latest
-go get github.com/ssoeasy-dev/pkg/logger@latest
-go get github.com/ssoeasy-dev/pkg/grpc@latest
-go get github.com/ssoeasy-dev/pkg/rmq@latest
-go get github.com/ssoeasy-dev/pkg/s3@latest
 go get github.com/ssoeasy-dev/pkg/errors@latest
 ```
 
 Или конкретную версию:
 
 ```bash
-go get github.com/ssoeasy-dev/pkg/db@v1.0.10
+go get github.com/ssoeasy-dev/pkg/errors@v1.0.0
 ```
 
 ## Релизы
@@ -99,10 +74,10 @@ curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/insta
 
 ```bash
 # Один пакет
-cd db && go test -v -race ./...
+cd errors && go test -v -race ./...
 
 # Все пакеты
-for pkg in db logger grpc rmq s3; do
+for pkg in errors; do
   echo "=== $pkg ===" && cd $pkg && go test -race ./... && cd ..
 done
 ```
@@ -120,7 +95,7 @@ done
 
 ```go
 // auth.svc/go.mod
-replace github.com/ssoeasy-dev/pkg/db => ../pkg/db
+replace github.com/ssoeasy-dev/pkg/errors => ../pkg/errors
 ```
 
 Убирайте `replace` перед мержем.
@@ -128,7 +103,7 @@ replace github.com/ssoeasy-dev/pkg/db => ../pkg/db
 Если нужно протестировать изменения из `develop` до релиза — ссылайтесь по commit hash:
 
 ```bash
-go get github.com/ssoeasy-dev/pkg/db@<commit-hash>
+go get github.com/ssoeasy-dev/pkg/errors@<commit-hash>
 # go.mod получит псевдо-версию: v1.0.11-0.20260320143021-abc1234f8b9a
 ```
 

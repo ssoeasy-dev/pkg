@@ -7,6 +7,7 @@ on:
 permissions:
   contents: write
   packages: read
+  actions: read # для чтения статусов workflow-запусков
 
 jobs:
   # ─── 1. Определяем изменённые пакеты ────────────────────────────────────────
@@ -24,13 +25,9 @@ jobs:
       - name: Detect changed packages
         id: detect
         run: |
-          # Единый список всех пакетов
           PACKAGES=("db" "logger" "grpc" "rmq" "s3" "errors")
-
-          # Формируем JSON-массив для полного релиза
           ALL_PACKAGES=$(printf '%s\n' "${PACKAGES[@]}" | jq -R . | jq -s -c .)
 
-          # При первом коммите или если нет предыдущего — релизим всё
           if [ -z "${{ github.event.before }}" ] || \
              ! git rev-parse "${{ github.event.before }}" >/dev/null 2>&1; then
             echo "No previous commit — releasing all packages"
@@ -51,11 +48,79 @@ jobs:
           echo "Changed packages: $CHANGED"
           echo "matrix={\"package\":$CHANGED}" >> $GITHUB_OUTPUT
 
-  # ─── 2. Релизим каждый изменённый пакет ─────────────────────────────────────
+  # ─── 2. Ожидаем завершения Lint и Test ────────────────────────────────────
+  wait-for-checks:
+    name: Wait for Lint & Test
+    runs-on: ubuntu-latest
+    outputs:
+      should_deploy: ${{ steps.check.outputs.should_deploy }}
+    steps:
+      - name: Wait for Lint & Test, then check results
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sha = context.sha;
+            const REQUIRED = ['Lint', 'Test'];
+            const POLL_INTERVAL_MS = 15000; // 15 секунд
+            const TIMEOUT_MS = 10 * 60 * 1000; // 10 минут максимум ожидания
+            const started = Date.now();
+
+            console.log(`SHA: ${sha}`);
+
+            while (true) {
+              const { data: { workflow_runs: runs } } =
+                await github.rest.actions.listWorkflowRunsForRepo({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  head_sha: sha,
+                  per_page: 20,
+                });
+
+              const relevant = runs.filter(r => REQUIRED.includes(r.name));
+              console.log('Runs:', relevant.map(r => `${r.name}=${r.conclusion ?? 'running'}`));
+
+              // Нет запусков Lint/Test — прямой пуш без PR, деплоим сразу
+              if (relevant.length === 0) {
+                console.log('No Lint/Test runs found — direct push, deploying.');
+                core.setOutput('should_deploy', 'true');
+                return;
+              }
+
+              const stillRunning = relevant.filter(r => r.conclusion === null);
+
+              if (stillRunning.length === 0) {
+                // Все завершились — проверяем результаты
+                const failed = relevant.filter(r => r.conclusion !== 'success');
+                if (failed.length > 0) {
+                  core.warning(`Checks failed: ${failed.map(r => `${r.name}=${r.conclusion}`).join(', ')}`);
+                  core.setOutput('should_deploy', 'false');
+                } else {
+                  console.log('All checks passed — deploying.');
+                  core.setOutput('should_deploy', 'true');
+                }
+                return;
+              }
+
+              // Есть ещё бегущие — проверяем таймаут
+              if (Date.now() - started > TIMEOUT_MS) {
+                core.setFailed(`Timeout waiting for: ${stillRunning.map(r => r.name).join(', ')}`);
+                return;
+              }
+
+              console.log(`Still running: ${stillRunning.map(r => r.name).join(', ')}. Waiting ${POLL_INTERVAL_MS / 1000}s...`);
+              await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+            }
+
+  # ─── 3. Релизим каждый изменённый пакет (только если проверки прошли) ──────
   release:
     name: Release ${{ matrix.package }}
-    needs: detect-changes
-    if: needs.detect-changes.outputs.matrix != '{"package":[]}'
+    needs:
+      - detect-changes
+      - wait-for-checks
+    if: |
+      needs.detect-changes.outputs.matrix != '{"package":[]}' &&
+      needs.wait-for-checks.outputs.should_deploy == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
@@ -77,7 +142,7 @@ jobs:
             "https://github.com/"
           go env -w GOPRIVATE=github.com/ssoeasy-dev/*
 
-      # ── Определяем следующую версию ─────────────────────────────────────────
+      # ── Определяем следующую версию, анализируя маркеры ────────────────────
       - name: Calculate next version
         id: version
         run: |
@@ -89,41 +154,81 @@ jobs:
             | tail -n 1)
 
           if [ -z "$LAST_TAG" ]; then
-            NEXT="v1.0.0"
-            echo "No existing tags — starting at $NEXT"
+            echo "No existing tags for package ${PKG}"
+          fi
+
+          # Получаем коммиты, затронувшие пакет
+          if [ -z "$LAST_TAG" ]; then
+            RANGE="HEAD"
           else
-            # Извлекаем X.Y.Z
+            RANGE="${LAST_TAG}..HEAD"
+          fi
+
+          COMMITS=$(git log "$RANGE" \
+            --format="%s" \
+            -- "${PKG}/" \
+            2>/dev/null || true)
+
+          echo "Commits since ${LAST_TAG:-beginning}:"
+          echo "$COMMITS"
+
+          # Анализ маркеров
+          skip=false
+          has_major=false
+          has_minor=false
+          has_patch=false
+
+          while IFS= read -r msg; do
+            [ -z "$msg" ] && continue
+            if echo "$msg" | grep -q "major(${PKG})"; then
+              has_major=true
+              echo "Found major marker in: $msg"
+            elif echo "$msg" | grep -qE "(feat|minor)\(${PKG}\)"; then
+              has_minor=true
+              echo "Found minor marker in: $msg"
+            elif echo "$msg" | grep -q "(${PKG})"; then
+              has_patch=true
+              echo "Found patch marker in: $msg"
+            fi
+          done <<< "$COMMITS"
+
+          # Определяем тип бампа
+          if [ "$has_major" = true ]; then
+            BUMP_TYPE="major"
+          elif [ "$has_minor" = true ]; then
+            BUMP_TYPE="minor"
+          elif [ "$has_patch" = true ]; then
+            BUMP_TYPE="patch"
+          else
+            echo "No release markers found for package ${PKG} in commits. Skipping."
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Вычисляем следующую версию
+          if [ -z "$LAST_TAG" ]; then
+            NEXT="v1.0.0"
+            echo "First release for ${PKG} → ${NEXT}"
+          else
             VERSION="${LAST_TAG#${PKG}/v}"
             MAJOR=$(echo "$VERSION" | cut -d. -f1)
             MINOR=$(echo "$VERSION" | cut -d. -f2)
             PATCH=$(echo "$VERSION" | cut -d. -f3)
 
-            # Смотрим commit messages с последнего тега
-            COMMITS=$(git log "${LAST_TAG}..HEAD" \
-              --format="%s" \
-              -- "${PKG}/" \
-              2>/dev/null || true)
-
-            echo "Commits since $LAST_TAG:"
-            echo "$COMMITS"
-
-            # Правила бампа:
-            #   BREAKING или major: → major bump
-            #   feat или minor:     → minor bump
-            #   всё остальное       → patch bump
-            if echo "$COMMITS" | grep -qiE "BREAKING|^major:"; then
-              MAJOR=$((MAJOR + 1))
-              MINOR=0
-              PATCH=0
-              BUMP_TYPE="major"
-            elif echo "$COMMITS" | grep -qiE "^feat:|^minor:"; then
-              MINOR=$((MINOR + 1))
-              PATCH=0
-              BUMP_TYPE="minor"
-            else
-              PATCH=$((PATCH + 1))
-              BUMP_TYPE="patch"
-            fi
+            case $BUMP_TYPE in
+              major)
+                MAJOR=$((MAJOR + 1))
+                MINOR=0
+                PATCH=0
+                ;;
+              minor)
+                MINOR=$((MINOR + 1))
+                PATCH=0
+                ;;
+              patch)
+                PATCH=$((PATCH + 1))
+                ;;
+            esac
 
             NEXT="v${MAJOR}.${MINOR}.${PATCH}"
             echo "Bump type: $BUMP_TYPE — $LAST_TAG → ${PKG}/${NEXT}"
@@ -132,9 +237,11 @@ jobs:
           echo "version=${NEXT}" >> $GITHUB_OUTPUT
           echo "tag=${PKG}/${NEXT}" >> $GITHUB_OUTPUT
           echo "last_tag=${LAST_TAG}" >> $GITHUB_OUTPUT
+          echo "skip=false" >> $GITHUB_OUTPUT
 
       # ── Проверяем, что тег ещё не существует ────────────────────────────────
       - name: Check tag doesn't exist
+        if: steps.version.outputs.skip != 'true'
         run: |
           TAG="${{ steps.version.outputs.tag }}"
           if git tag -l "$TAG" | grep -q "$TAG"; then
@@ -145,6 +252,7 @@ jobs:
 
       # ── Прогоняем тесты перед релизом ────────────────────────────────────────
       - name: Run tests
+        if: steps.version.outputs.skip != 'true'
         working-directory: ${{ matrix.package }}
         run: |
           go mod download
@@ -152,6 +260,7 @@ jobs:
 
       # ── Собираем changelog ───────────────────────────────────────────────────
       - name: Build changelog
+        if: steps.version.outputs.skip != 'true'
         id: changelog
         run: |
           PKG="${{ matrix.package }}"
@@ -163,7 +272,6 @@ jobs:
             RANGE="${LAST_TAG}..HEAD"
           fi
 
-          # Собираем коммиты, касающиеся пакета
           CHANGES=$(git log "$RANGE" \
             --format="- %s ([%h](https://github.com/${{ github.repository }}/commit/%H))" \
             -- "${PKG}/" \
@@ -173,7 +281,6 @@ jobs:
             CHANGES="- Minor changes and improvements"
           fi
 
-          # Сохраняем в файл (многострочный output через heredoc)
           {
             echo "notes<<NOTES_EOF"
             echo "## What's Changed"
@@ -186,6 +293,7 @@ jobs:
 
       # ── Создаём тег ──────────────────────────────────────────────────────────
       - name: Create git tag
+        if: steps.version.outputs.skip != 'true'
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -197,6 +305,7 @@ jobs:
 
       # ── Создаём GitHub Release ───────────────────────────────────────────────
       - name: Create GitHub Release
+        if: steps.version.outputs.skip != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
@@ -207,6 +316,7 @@ jobs:
 
       # ── Выводим инструкцию по использованию ─────────────────────────────────
       - name: Print usage
+        if: steps.version.outputs.skip != 'true'
         run: |
           PKG="${{ matrix.package }}"
           TAG="${{ steps.version.outputs.tag }}"

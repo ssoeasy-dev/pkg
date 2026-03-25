@@ -42,12 +42,12 @@ type Repository[Model any] interface {
 }
 
 type repository[Model any] struct {
-	log        *logger.Logger
+	log        logger.Logger
 	txManager  tx.TxManager
 	EntityName string
 }
 
-func NewRepository[Model any](txManager tx.TxManager, log *logger.Logger, entityName string) Repository[Model] {
+func NewRepository[Model any](txManager tx.TxManager, log logger.Logger, entityName string) Repository[Model] {
 	return &repository[Model]{
 		log:        log,
 		txManager:  txManager,

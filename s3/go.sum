@@ -16,8 +16,6 @@ github.com/aws/aws-sdk-go-v2/credentials v1.19.12 h1:oqtA6v+y5fZg//tcTWahyN9PEn5
 github.com/aws/aws-sdk-go-v2/credentials v1.19.12/go.mod h1:U3R1RtSHx6NB0DvEQFGyf/0sbrpJrluENHdPy1j/3TE=
 github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.20 h1:zOgq3uezl5nznfoK3ODuqbhVg1JzAGDUhXOsU0IDCAo=
 github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.20/go.mod h1:z/MVwUARehy6GAg/yQ1GO2IMl0k++cu1ohP9zo887wE=
-github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.22.9 h1:qNexWvHcEq5UBNB3Osq8yet8fJrjSCVGYCqnATVlUS8=
-github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.22.9/go.mod h1:bxoMfaDHGFMTpehzfafog+gldxwiiaksMGAroU2lIIg=
 github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager v0.1.11 h1:UDj3NP0bcHZpoAm1IR/NG5YduEcXXIsVxpaKVsfU5kU=
 github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager v0.1.11/go.mod h1:wp9dMZykzIPOEwVxr4p4fkDY0sHDoMRvo4NBCD4N2Xs=
 github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.20 h1:CNXO7mvgThFGqOFgbNAP2nol2qAWBOGfqR/7tQlvLmc=
@@ -157,8 +155,8 @@ github.com/shirou/gopsutil/v4 v4.26.2 h1:X8i6sicvUFih4BmYIGT1m2wwgw2VG9YgrDTi7cI
 github.com/shirou/gopsutil/v4 v4.26.2/go.mod h1:LZ6ewCSkBqUpvSOf+LsTGnRinC6iaNUNMGBtDkJBaLQ=
 github.com/sirupsen/logrus v1.9.3 h1:dueUQJ1C2q9oE3F7wvmSGAaVtTmUizReu6fjN8uqzbQ=
 github.com/sirupsen/logrus v1.9.3/go.mod h1:naHLuLoDiP4jHNo9R0sCBMtWGeIprob74mVsIT4qYEQ=
-github.com/ssoeasy-dev/pkg/errors v1.0.0 h1:ACsKxXLIcER/y45I5XXWwv2zytj4Rs05Q7fiozEHvKM=
-github.com/ssoeasy-dev/pkg/errors v1.0.0/go.mod h1:cbDrtfvAla/o9OUx6C7Be9Bmiz8mwv56Zs6cDih9bjw=
+github.com/ssoeasy-dev/pkg/errors v1.1.0 h1:1gpe/bqesLFPnbAfb3UZtxP+A1nooiCLCBqMDk2ax/s=
+github.com/ssoeasy-dev/pkg/errors v1.1.0/go.mod h1:cbDrtfvAla/o9OUx6C7Be9Bmiz8mwv56Zs6cDih9bjw=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.5.2 h1:xuMeJ0Sdp5ZMRXx/aWO6RZxdr3beISkG5/G/aIRr3pY=
 github.com/stretchr/objx v0.5.2/go.mod h1:FRsXN1f5AsAjCGJKqEizvkpNtU+EGNCLh3NxZ/8L+MA=

@@ -32,10 +32,10 @@ type Server struct {
 type Interceptors struct {
 	// Unary interceptors appended after the built-in unary chain.
 	// Order: TraceID → RequestID → Logging → Unary[0] → Unary[1] → ... → Recovery
-	Unary []grpc.UnaryServerInterceptor
+	Unary []UnaryServerInterceptor
 	// Stream interceptors appended after StreamRecoveryInterceptor.
 	// Order: Stream[0] → Stream[1] → ... → StreamRecovery
-	Stream []grpc.StreamServerInterceptor
+	Stream []StreamServerInterceptor
 }
 
 // NewServer creates a Server that listens on addr (e.g. "0.0.0.0:50051").

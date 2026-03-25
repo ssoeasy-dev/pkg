@@ -24,6 +24,8 @@ const (
 // Если возвращается nil, считается, что ошибка обработана и клиенту вернётся OK.
 // Если handler вернёт ту же ошибку или другую, она будет возвращена клиенту.
 type ErrorHandler func(error) error
+type UnaryServerInterceptor = grpc.UnaryServerInterceptor
+type StreamServerInterceptor = grpc.StreamServerInterceptor
 
 // ----- Unary ----------------------------------------------------------------
 
@@ -108,7 +110,9 @@ func ErrorHandlerInterceptor(log logger.Logger, handler ErrorHandler) grpc.Unary
 		resp, err := next(ctx, req)
 		if err != nil && handler != nil {
 			err = errorHandler(ctx, log, err)
-			err = handler(err)
+			if handler != nil {
+				err = handler(err)
+			}
 		}
 		return resp, err
 	}
@@ -207,7 +211,9 @@ func StreamErrorHandlerInterceptor(ctx context.Context, log logger.Logger, handl
 		err := next(srv, ss)
 		if err != nil && handler != nil {
 			err = errorHandler(ctx, log, err)
-			err = handler(err)
+			if handler != nil {
+				err = handler(err)
+			}
 		}
 		return err
 	}

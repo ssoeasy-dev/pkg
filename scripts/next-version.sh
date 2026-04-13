@@ -3,6 +3,7 @@ set -e
 
 PKG="$1"
 
+# Находим последний стабильный тег пакета
 LAST_STABLE=$(git tag -l "${PKG}/v*" | grep -E "^${PKG}/v[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -n1)
 
 if [ -z "$LAST_STABLE" ]; then
@@ -15,8 +16,9 @@ fi
 
 echo "DEBUG: LAST_STABLE=$LAST_STABLE, START_REF=$START_REF, HEAD=$(git rev-parse HEAD)" >&2
 
-# Убираем подавление ошибок
-COMMITS=$(git log "${START_REF}..HEAD" --format="%s" -- "${PKG}/")
+# Коммиты от стабильного тега до текущего HEAD, затрагивающие пакет
+COMMITS=$(git log "${START_REF}..HEAD" --format="%s" -- "${PKG}/" 2>/dev/null || true)
+
 echo "DEBUG: COMMITS='$COMMITS'" >&2
 
 if [ -z "$COMMITS" ]; then
@@ -24,6 +26,7 @@ if [ -z "$COMMITS" ]; then
   exit 0
 fi
 
+# Определяем тип bump
 BUMP_TYPE="patch"
 if echo "$COMMITS" | grep -qiE "major\(${PKG}\)|BREAKING CHANGE"; then
   BUMP_TYPE="major"
@@ -35,9 +38,12 @@ fi
 
 echo "DEBUG: BUMP_TYPE=$BUMP_TYPE" >&2
 
+# Вычисляем следующую версию
 if command -v semver &>/dev/null; then
+  echo "DEBUG: using semver tool" >&2
   NEXT_VERSION=$(semver bump "$BUMP_TYPE" "$CURRENT_VERSION")
 else
+  echo "DEBUG: using fallback bash increment" >&2
   IFS='.' read -r MAJOR MINOR PATCH <<<"$CURRENT_VERSION"
   case $BUMP_TYPE in
     major) NEXT_VERSION="$((MAJOR+1)).0.0" ;;

@@ -56,47 +56,47 @@ jobs:
           NEXT_BASE=$(bash ./scripts/next-version.sh "$PKG" "$BASE_REF" "${{ github.head_ref }}")
           echo "next_base=$NEXT_BASE" >> $GITHUB_OUTPUT
 
-      - name: Sanitize branch name
-        id: branch
-        run: |
-          SANITIZED=$(bash ./scripts/sanitize-branch.sh "${{ github.head_ref }}")
-          echo "sanitized=$SANITIZED" >> $GITHUB_OUTPUT
+          - name: Sanitize branch name
+          id: branch
+          run: |
+            SANITIZED=$(bash ./scripts/sanitize-branch.sh "${{ github.head_ref }}")
+            echo "sanitized=$SANITIZED" >> $GITHUB_OUTPUT
 
-      - name: Determine build number
-        id: build
-        run: |
-          PKG="${{ matrix.package }}"
-          BASE="${{ steps.version.outputs.next_base }}"
-          BRANCH="${{ steps.branch.outputs.sanitized }}"
+            - name: Determine build number
+            id: build
+            run: |
+                PKG="${{ matrix.package }}"
+                BASE="${{ steps.version.outputs.next_base }}"
+                BRANCH="${{ steps.branch.outputs.sanitized }}"
 
-          PATTERN="${PKG}/v${BASE}-dev-${BRANCH}.[0-9]*"
-          EXISTING=$(git tag -l "$PATTERN" | sort -V | tail -n1)
+                PATTERN="${PKG}/v${BASE}-dev.${BRANCH}.[0-9]*"
+                EXISTING=$(git tag -l "$PATTERN" | sort -V | tail -n1)
 
-          if [ -z "$EXISTING" ]; then
-            BUILD=1
-          else
-            LAST_BUILD=$(echo "$EXISTING" | grep -oE '[0-9]+$')
-            BUILD=$((LAST_BUILD + 1))
-          fi
-          echo "build=$BUILD" >> $GITHUB_OUTPUT
+                if [ -z "$EXISTING" ]; then
+                BUILD=1
+                else
+                LAST_BUILD=$(echo "$EXISTING" | grep -oE '[0-9]+$')
+                BUILD=$((LAST_BUILD + 1))
+                fi
+                echo "build=$BUILD" >> $GITHUB_OUTPUT
 
-      - name: Create dev tag
-        id: tag
-        run: |
-          PKG="${{ matrix.package }}"
-          BASE="${{ steps.version.outputs.next_base }}"
-          BRANCH="${{ steps.branch.outputs.sanitized }}"
-          BUILD="${{ steps.build.outputs.build }}"
+            - name: Create dev tag
+            id: tag
+            run: |
+                PKG="${{ matrix.package }}"
+                BASE="${{ steps.version.outputs.next_base }}"
+                BRANCH="${{ steps.branch.outputs.sanitized }}"
+                BUILD="${{ steps.build.outputs.build }}"
 
-          TAG="${PKG}/v${BASE}-dev-${BRANCH}.${BUILD}"
+                TAG="${PKG}/v${BASE}-dev.${BRANCH}.${BUILD}"
 
-          echo "Creating tag: $TAG"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" -m "Dev version for $PKG from branch ${{ github.head_ref }}"
-          git push origin "$TAG"
+                echo "Creating tag: $TAG"
+                git config user.name "github-actions[bot]"
+                git config user.email "github-actions[bot]@users.noreply.github.com"
+                git tag -a "$TAG" -m "Dev version for $PKG from branch ${{ github.head_ref }}"
+                git push origin "$TAG"
 
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
+                echo "tag=$TAG" >> $GITHUB_OUTPUT
 
       - name: Comment on PR
         uses: actions/github-script@v7

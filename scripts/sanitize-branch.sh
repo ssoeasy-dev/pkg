@@ -3,5 +3,5 @@
 # Usage: ./sanitize-branch.sh <branch-name>
 
 BRANCH="$1"
-# Replace '/' and '_' with '-', convert to lowercase, keep only alphanumeric and '-'
-echo "$BRANCH" | sed 's/[\/_]/-/g' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]//g'
+# Replace all non-alphanumeric characters with '-', then collapse multiple '-'
+echo "$BRANCH" | sed 's/[^a-zA-Z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//'

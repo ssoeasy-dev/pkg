@@ -2,7 +2,6 @@
 set -e
 
 PKG="$1"
-HEAD_REF="$2"
 
 # Находим последний стабильный тег пакета
 LAST_STABLE=$(git tag -l "${PKG}/v*" | grep -E "^${PKG}/v[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -n1)
@@ -12,12 +11,11 @@ if [ -z "$LAST_STABLE" ]; then
   START_REF=$(git rev-list --max-parents=0 HEAD)
 else
   CURRENT_VERSION="${LAST_STABLE#${PKG}/v}"
-  # Находим общего предка между стабильным тегом и HEAD
-  START_REF=$(git merge-base "$LAST_STABLE" "$HEAD_REF" 2>/dev/null || echo "$LAST_STABLE")
+  START_REF="$LAST_STABLE"
 fi
 
-# Коммиты от START_REF до HEAD, затрагивающие пакет
-COMMITS=$(git log "${START_REF}..${HEAD_REF}" --format="%s" -- "${PKG}/" 2>/dev/null || true)
+# Коммиты от стабильного тега до текущего HEAD, затрагивающие пакет
+COMMITS=$(git log "${START_REF}..HEAD" --format="%s" -- "${PKG}/" 2>/dev/null || true)
 
 if [ -z "$COMMITS" ]; then
   echo "$CURRENT_VERSION"

@@ -1,13 +1,16 @@
 package errors
 
-import "errors"
+import (
+	"context"
+	"errors"
+)
 
 // Универсальные виды ошибок, покрывающие как семантику HTTP, так и gRPC.
 // При маппинге на конкретный протокол выбирается наиболее подходящий код;
 // менее детализированные протоколы схлопывают несколько видов в один.
 var (
 	// ErrCanceled — операция отменена (обычно клиентом).
-	ErrCanceled = errors.New("canceled")
+	ErrCanceled = context.Canceled
 
 	// ErrUnknown — неизвестная ошибка.
 	ErrUnknown = errors.New("unknown error")
@@ -16,7 +19,7 @@ var (
 	ErrInvalidArgument = errors.New("invalid argument")
 
 	// ErrDeadlineExceeded — превышен дедлайн.
-	ErrDeadlineExceeded = errors.New("deadline exceeded")
+	ErrDeadlineExceeded = context.DeadlineExceeded
 
 	// ErrNotFound — ресурс не найден.
 	ErrNotFound = errors.New("not found")

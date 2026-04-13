@@ -75,7 +75,7 @@ fmt.Println(errors.FullError(appErr)) // "failed to fetch user: sql: connection 
 ### Инспекция ошибок
 
 `Kind(err error) error`
-Возвращает вид ошибки. Если ошибка не была создана через этот пакет, возвращает ` ErrUnknown`.
+Возвращает вид ошибки. Если ошибка не была создана через этот пакет, возвращает `ErrUnknown`.
 
 `Is(err error, target error) bool`
 Аналог `errors.Is` из стандартной библиотеки.

@@ -1,6 +1,6 @@
 # pkg/errors
 
-Стандартизированная обработка ошибок в Go-микросервисах SSO Easy с поддержкой типизированных видов ошибок (error kinds) и сохранением деталей.
+Стандартизированная обработка ошибок в Go-микросервисах SSO Easy с поддержкой типизированных видов ошибок (error kinds) и разделением публичных и технических сообщений.
 
 ## Установка
 
@@ -25,155 +25,108 @@ if errors.Is(err, errors.ErrNotFound) {
 unwrapped := errors.Unwrap(err) // *fmt.Errorf("user with id 42 not found")
 ```
 
-## Виды ошибок (Error Kinds)
+## Основные концепции
 
-Пакет предоставляет предопределённые виды ошибок, сгруппированные по категориям. Все они реализуют интерфейс `error`.
+### Публичное vs техническое сообщение
 
-### CRUD-операции
+Каждая ошибка, созданная через этот пакет, содержит два уровня информации:
 
-```go
-errors.ErrCreationFailed   // "creation failed"
-errors.ErrUpdateFailed     // "update failed"
-errors.ErrDeleteFailed     // "delete failed"
-errors.ErrGetFailed        // "get failed"
-```
+- Публичное сообщение — то, что видит клиент при вызове `err.Error()`. Оно не раскрывает технических деталей реализации.
+- Техническое сообщение — полная цепочка причин, доступная через `errors.FullError(err)`. Используется только для логирования.
 
-### Базы данных
+Пример:
 
 ```go
-errors.ErrNotFound         // "not found"
-errors.ErrAlreadyExists    // "already exists"
-errors.ErrForeignKey       // "foreign key violation"
-errors.ErrCheckViolation   // "check constraint violation"
-errors.ErrNotNullViolation // "not null violation"
-errors.ErrDeadlock         // "deadlock detected"
-errors.ErrLockTimeout      // "lock timeout"
-errors.ErrResourceExhausted// "resource exhausted"
-errors.ErrPermissionDenied // "permission denied"
-errors.ErrUnavailable      // "database unavailable"
-errors.ErrInvalidArgument  // "invalid argument"
-```
+dbErr := sql.ErrConnDone
+appErr := errors.NewWrap(errors.ErrUnavailable, dbErr, "failed to fetch user")
 
-### Транзакции
-
-```go
-errors.ErrTxBegin    // "failed to begin transaction"
-errors.ErrTxCommit   // "failed to commit transaction"
-errors.ErrTxRollback // "failed to rollback transaction"
-```
-
-### Контекст и валидация
-
-```go
-errors.ErrCanceled         // контекст отменён (аналог context.Canceled)
-errors.ErrDeadlineExceeded // превышен дедлайн (аналог context.DeadlineExceeded)
-errors.ErrUnauthenticated  // "Unauthenticated"
-errors.ErrValidation       // "validation error"
-errors.ErrUnknown          // "unknown error"
-```
-
-## Подробное использование
-
-### Создание ошибок
-
-Пакет предоставляет два способа создания ошибок:
-
-1. Скрытые детали (по умолчанию)
-
-```go
-err := errors.New(errors.ErrNotFound, "user %s not found", username)
-
-fmt.Println(err.Error()) // "not found"
-```
-
-Метод `Error()` возвращает только строку вида — детали скрыты от клиента. Детали сохраняются и доступны через `Unwrap()`.
-
-2. Явные детали (verbose)
-
-```go
-err := errors.NewVerbose(errors.ErrUnauthenticated, "payment required for subscription %d", 42)
-
-fmt.Println(err.Error()) // "payment required for subscription 42"
-```
-
-Метод `Error()` возвращает полное форматированное сообщение. Используйте этот вариант, когда клиенту необходимо получить поясняющие детали (например, доменные ошибки).
-
-### Проверка вида ошибки
-
-Используйте `errors.Is`, как в стандартной библиотеке:
-
-```go
-if errors.Is(err, errors.ErrNotFound) {
-    // ошибка относится к типу "не найдено"
-}
-```
-
-### Извлечение деталей
-
-Детали ошибки доступны через стандартный `errors.Unwrap`:
-
-```go
-details := errors.Unwrap(err) // ошибка с форматированным сообщением
-```
-
-### Получение вида ошибки
-
-Для получения вида ошибки используйте интерфейс `errors.Kinded`:
-
-```go
-if kinded, ok := err.(errors.Kinded); ok {
-    kind := kinded.Kind()
-    fmt.Println(kind) // "not found"
-}
-```
-
-### Встраивание в цепочки ошибок
-
-Ошибки, созданные через `New` или `NewVerbose`, реализуют интерфейс `Unwrap`, поэтому их можно комбинировать с другими ошибками:
-
-```go
-err := errors.New(errors.ErrNotFound, "user not found")
-err = fmt.Errorf("failed to get user: %w", err)
-
-// Проверка работает сквозь обёртки
-if errors.Is(err, errors.ErrNotFound) {
-    // true
-}
-```
-
-### Пользовательские виды
-
-Можно определять собственные виды, если предопределённых недостаточно:
-
-```go
-var ErrMyCustom = errors.New("my custom error")
-
-err := errors.New(ErrMyCustom, "something went wrong")
-
-if errors.Is(err, ErrMyCustom) {
-    // ...
-}
+fmt.Println(appErr.Error())           // "failed to fetch user"
+fmt.Println(errors.FullError(appErr)) // "failed to fetch user: sql: connection is already closed"
 ```
 
 ## API
 
-`func New(kind error, format string, args ...any) error`
-Создаёт ошибку со скрытыми деталями (метод `Error()` возвращает только строку вида). Реализует интерфейсы `Kinded`, `Unwrap`, `Is`.
+### Создание ошибок
 
-`func NewVerbose(kind error, format string, args ...any) error`
-Создаёт ошибку с явными деталями (метод `Error()` возвращает полное сообщение). Реализует те же интерфейсы, что и `New`.
+`New(kind error, msg string) error`
+Создаёт корневую ошибку с указанным видом и техническим сообщением.
+`Error()` вернёт строку вида, `FullError()` — техническое сообщение.
 
-`type Kinded interface { Kind() error }`
-Интерфейс для получения вида ошибки.
+`Newf(kind error, format string, args ...any) error`
+Форматированный вариант `New`.
 
-`func Is(err error, target error) bool`
-Делегирует вызов `errors.Is` из стандартной библиотеки.
+`Wrap(err error, msg string) error`
+Оборачивает существующую ошибку, добавляя публичное сообщение.
+Вид (`Kind`) берётся из обёрнутой ошибки (если она была создана через этот пакет).
 
-`func As(err error, target any) bool`
-Делегирует вызов `errors.As` из стандартной библиотеки.
+`Wrapf(err error, format string, args ...any) error`
+Форматированный вариант `Wrap`.
 
-`func Unwrap(err error) error`
-Делегирует вызов `errors.Unwrap` из стандартной библиотеки.
+`NewWrap(kind error, cause error, msg string) error`
+Создаёт ошибку с явно заданным видом, оборачивая `cause` и добавляя публичное сообщение.
+Эквивалентно созданию ошибки с заданным `kind`, где `cause` является причиной.
+
+`NewWrapf(kind error, cause error, format string, args ...any) error`
+Форматированный вариант `NewWrap`.
+
+`WithKind(err error, kind error) error`
+Возвращает копию ошибки с изменённым видом, сохраняя всю цепочку.
+
+### Инспекция ошибок
+
+`Kind(err error) error`
+Возвращает вид ошибки. Если ошибка не была создана через этот пакет, возвращает ` ErrUnknown`.
+
+`Is(err error, target error) bool`
+Аналог `errors.Is` из стандартной библиотеки.
+
+`As(err error, target any) bool`
+Аналог `errors.As` из стандартной библиотеки.
+
+`Unwrap(err error) error`
+Возвращает следующую ошибку в цепочке. Работает как с ошибками пакета, так и с обычными.
+
+`FullError(err error) string`
+Возвращает полную строку ошибки с техническими деталями, включая все обёрнутые причины. Предназначена только для логирования.
+
+## Примеры использования
+
+### Создание и оборачивание
+
+```go
+// Корневая ошибка
+err := errors.New(errors.ErrNotFound, "user id=123 not found in database")
+
+// Добавление контекста без изменения вида
+err = errors.Wrap(err, "failed to get user profile")
+
+// Проверка вида
+if errors.Is(err, errors.ErrNotFound) {
+    // обработать
+}
+
+// Логирование полной цепочки
+log.Error(errors.FullError(err))
+```
+
+### Работа с внешними ошибками
+
+```go
+sqlErr := gorm.ErrRecordNotFound
+appErr := errors.NewWrap(errors.ErrNotFound, sqlErr, "user not found")
+
+fmt.Println(errors.Kind(appErr))       // ErrNotFound
+fmt.Println(appErr.Error())            // "user not found"
+fmt.Println(errors.FullError(appErr))  // "user not found: record not found"
+```
+
+### Изменение вида ошибки
+
+```go
+err := errors.New(errors.ErrInternal, "something went wrong")
+// На уровне выше выяснилось, что это ошибка валидации
+err = errors.WithKind(err, errors.ErrInvalidArgument)
+```
 
 ## Тесты
 
@@ -181,29 +134,6 @@ if errors.Is(err, ErrMyCustom) {
 
 ```bash
 go test -v -race ./...
-```
-
-Пример тестов из документации:
-
-```go
-package errors_test
-
-import (
-    "testing"
-    "github.com/ssoeasy-dev/pkg/errors"
-    "github.com/stretchr/testify/assert"
-)
-
-func TestError_WrapAndUnwrap(t *testing.T) {
-    kind := errors.ErrNotFound
-    wrapped := errors.New(kind, "user with id %d not found", 42)
-
-    assert.ErrorIs(t, wrapped, kind)
-    assert.NotErrorIs(t, wrapped, errors.ErrAlreadyExists)
-
-    unwrapped := errors.Unwrap(wrapped)
-    assert.EqualError(t, unwrapped, "user with id 42 not found")
-}
 ```
 
 ## Лицензия
@@ -215,4 +145,3 @@ MIT — см. [LICENSE](../LICENSE).
 - Email: [morewiktor@yandex.ru](mailto:morewiktor@yandex.ru)
 - Telegram: [@MoreWiktor](https://t.me/MoreWiktor)
 - GitHub: [@MoreWiktor](https://github.com/MoreWiktor)
-

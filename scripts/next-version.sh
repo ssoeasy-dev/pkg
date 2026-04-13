@@ -1,6 +1,7 @@
 #!/bin/bash
 # scripts/next-version.sh
-# Вычисляет следующую базовую версию на основе коммитов в пакете
+# Usage: ./next-version.sh <package> [base-ref] <head-ref>
+# If base-ref is empty, uses the latest stable tag for the package.
 
 set -e
 
@@ -8,7 +9,7 @@ PKG="$1"
 BASE_REF="$2"
 HEAD_REF="$3"
 
-# Последний стабильный тег пакета (без пререлиза)
+# Find the latest stable tag for this package
 LAST_STABLE=$(git tag -l "${PKG}/v*" | grep -E "^${PKG}/v[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -n1)
 
 if [ -z "$LAST_STABLE" ]; then
@@ -17,27 +18,35 @@ else
   CURRENT_VERSION="${LAST_STABLE#${PKG}/v}"
 fi
 
-# Коммиты, затрагивающие пакет
+# Determine base reference for commit log
+if [ -z "$BASE_REF" ]; then
+  if [ -n "$LAST_STABLE" ]; then
+    BASE_REF="$LAST_STABLE"
+  else
+    BASE_REF=$(git rev-list --max-parents=0 HEAD)
+  fi
+fi
+
+# Get commits affecting the package since BASE_REF
 COMMITS=$(git log "${BASE_REF}..${HEAD_REF}" --format="%s" -- "${PKG}/" 2>/dev/null || true)
 
-# Если коммитов нет, возвращаем текущую версию
+# Default bump type: patch if there are any commits, else none
 if [ -z "$COMMITS" ]; then
   echo "$CURRENT_VERSION"
   exit 0
 fi
 
-# Проверка маркеров в коммитах
-BUMP_TYPE="patch"  # по умолчанию patch, если есть изменения
+BUMP_TYPE="patch"
 
-if echo "$COMMITS" | grep -qi "major(${PKG})" || echo "$COMMITS" | grep -qi "BREAKING CHANGE"; then
+if echo "$COMMITS" | grep -qiE "major\(${PKG}\)|BREAKING CHANGE"; then
   BUMP_TYPE="major"
-elif echo "$COMMITS" | grep -qiE "(feat|minor)\(${PKG}\)" || echo "$COMMITS" | grep -qi "feat(${PKG})" || echo "$COMMITS" | grep -qi "minor(${PKG})"; then
+elif echo "$COMMITS" | grep -qiE "(feat|minor)\(${PKG}\)"; then
   BUMP_TYPE="minor"
 elif echo "$COMMITS" | grep -qi "fix(${PKG})"; then
   BUMP_TYPE="patch"
 fi
 
-# Вычисляем следующую версию
+# Compute next version
 if command -v semver &>/dev/null; then
   NEXT_VERSION=$(semver bump "$BUMP_TYPE" "$CURRENT_VERSION")
 else

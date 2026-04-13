@@ -33,51 +33,18 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - name: Setup Node.js (for semver)
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install semver
-        run: npm install -g semver
-
-      - name: Compute next base version (with debug)
+      - name: Compute next base version
         id: version
         run: |
           PKG="${{ matrix.package }}"
-          
-          echo "=== DEBUG: Package: $PKG ==="
-          
-          # Находим последний стабильный тег
-          LAST_STABLE=$(git tag -l "${PKG}/v*" | grep -E "^${PKG}/v[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -n1)
-          echo "LAST_STABLE: $LAST_STABLE"
-          
-          if [ -z "$LAST_STABLE" ]; then
-            CURRENT_VERSION="0.0.0"
-            START_REF=$(git rev-list --max-parents=0 HEAD)
-          else
-            CURRENT_VERSION="${LAST_STABLE#${PKG}/v}"
-            START_REF="$LAST_STABLE"
-          fi
-          echo "CURRENT_VERSION: $CURRENT_VERSION"
-          echo "START_REF: $START_REF"
-          echo "HEAD: $(git rev-parse HEAD)"
-          
-          # Покажем последние 10 коммитов, затрагивающих пакет
-          echo "=== Recent commits affecting ${PKG}/ ==="
-          git log --oneline -10 -- "${PKG}/"
-          
-          echo "=== Commits from $START_REF to HEAD affecting ${PKG}/ ==="
-          COMMITS=$(git log "${START_REF}..HEAD" --format="%s" -- "${PKG}/" 2>/dev/null || true)
-          if [ -z "$COMMITS" ]; then
-            echo "No commits found in range."
-          else
-            echo "$COMMITS"
-          fi
-          
-          # Вызываем оригинальный скрипт
           NEXT_BASE=$(bash ./scripts/next-version.sh "$PKG")
           echo "next_base=$NEXT_BASE" >> $GITHUB_OUTPUT
+
+      - name: Sanitize branch name
+        id: branch
+        run: |
+          SANITIZED=$(echo "${{ github.head_ref }}" | sed 's/[^a-zA-Z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//')
+          echo "sanitized=$SANITIZED" >> $GITHUB_OUTPUT
 
       - name: Determine build number
         id: build
@@ -180,7 +147,7 @@ jobs:
       - name: Sanitize branch name
         id: branch
         run: |
-          SANITIZED=$(bash ./scripts/sanitize-branch.sh "${{ github.head_ref }}")
+          SANITIZED=$(echo "${{ github.head_ref }}" | sed 's/[^a-zA-Z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//')
           echo "sanitized=$SANITIZED" >> $GITHUB_OUTPUT
 
       - name: Delete dev tags for this branch

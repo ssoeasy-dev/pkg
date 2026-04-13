@@ -14,12 +14,8 @@ else
   START_REF="$LAST_STABLE"
 fi
 
-echo "DEBUG: LAST_STABLE=$LAST_STABLE, START_REF=$START_REF, HEAD=$(git rev-parse HEAD)" >&2
-
 # Коммиты от стабильного тега до текущего HEAD, затрагивающие пакет
 COMMITS=$(git log "${START_REF}..HEAD" --format="%s" -- "${PKG}/" 2>/dev/null || true)
-
-echo "DEBUG: COMMITS='$COMMITS'" >&2
 
 if [ -z "$COMMITS" ]; then
   echo "$CURRENT_VERSION"
@@ -36,22 +32,22 @@ elif echo "$COMMITS" | grep -qi "fix(${PKG})"; then
   BUMP_TYPE="patch"
 fi
 
-echo "DEBUG: BUMP_TYPE=$BUMP_TYPE" >&2
+# Ручной расчёт следующей версии
+IFS='.' read -r MAJOR MINOR PATCH <<<"$CURRENT_VERSION"
+case $BUMP_TYPE in
+  major)
+    MAJOR=$((MAJOR + 1))
+    MINOR=0
+    PATCH=0
+    ;;
+  minor)
+    MINOR=$((MINOR + 1))
+    PATCH=0
+    ;;
+  patch)
+    PATCH=$((PATCH + 1))
+    ;;
+esac
 
-# Вычисляем следующую версию
-if command -v semver &>/dev/null; then
-  echo "DEBUG: using semver tool" >&2
-  NEXT_VERSION=$(semver bump "$BUMP_TYPE" "$CURRENT_VERSION")
-else
-  echo "DEBUG: using fallback bash increment" >&2
-  IFS='.' read -r MAJOR MINOR PATCH <<<"$CURRENT_VERSION"
-  case $BUMP_TYPE in
-    major) NEXT_VERSION="$((MAJOR+1)).0.0" ;;
-    minor) NEXT_VERSION="${MAJOR}.$((MINOR+1)).0" ;;
-    patch) NEXT_VERSION="${MAJOR}.${MINOR}.$((PATCH+1))" ;;
-    *)     NEXT_VERSION="$CURRENT_VERSION" ;;
-  esac
-fi
-
-echo "DEBUG: NEXT_VERSION=$NEXT_VERSION" >&2
+NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}"
 echo "$NEXT_VERSION"

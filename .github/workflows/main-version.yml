@@ -1,0 +1,116 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  detect:
+    name: Detect Changed Packages
+    uses: ./.github/workflows/detect-changed-packages.yml
+    with:
+      base-ref: ${{ github.event.before }}
+      head-ref: ${{ github.sha }}
+
+  release:
+    name: Create Stable Release
+    needs: detect
+    if: needs.detect.outputs.packages != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        package: ${{ fromJson(needs.detect.outputs.packages) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find latest beta tag
+        id: beta
+        run: |
+          PKG="${{ matrix.package }}"
+          LAST_BETA=$(git tag -l "${PKG}/v*-beta.*" | sort -V | tail -n1)
+          if [ -z "$LAST_BETA" ]; then
+            echo "No beta tags found for $PKG, skipping."
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          BETA_VERSION="${LAST_BETA#${PKG}/v}"
+          BASE_VERSION="${BETA_VERSION%-beta.*}"
+          echo "should_release=true" >> $GITHUB_OUTPUT
+          echo "beta_tag=$LAST_BETA" >> $GITHUB_OUTPUT
+          echo "base_version=$BASE_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Compare with last stable
+        id: stable
+        if: steps.beta.outputs.should_release == 'true'
+        run: |
+          PKG="${{ matrix.package }}"
+          BASE_VERSION="${{ steps.beta.outputs.base_version }}"
+          LAST_STABLE=$(git tag -l "${PKG}/v*" | grep -E "^${PKG}/v[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -n1)
+          if [ -n "$LAST_STABLE" ]; then
+            STABLE_VERSION="${LAST_STABLE#${PKG}/v}"
+            if [ "$(printf '%s\n' "$STABLE_VERSION" "$BASE_VERSION" | sort -V | tail -n1)" = "$STABLE_VERSION" ]; then
+              echo "Stable version $STABLE_VERSION is already >= beta base $BASE_VERSION, skipping."
+              echo "should_release=false" >> $GITHUB_OUTPUT
+            else
+              echo "should_release=true" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create stable tag
+        if: steps.stable.outputs.should_release == 'true'
+        run: |
+          PKG="${{ matrix.package }}"
+          BASE_VERSION="${{ steps.beta.outputs.base_version }}"
+          TAG="${PKG}/v${BASE_VERSION}"
+          echo "Creating stable tag: $TAG"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $PKG $BASE_VERSION"
+          git push origin "$TAG"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Delete beta and dev tags for this package
+        if: steps.stable.outputs.should_release == 'true'
+        run: |
+          PKG="${{ matrix.package }}"
+          echo "Deleting beta and dev tags for $PKG"
+          for tag in $(git tag -l "${PKG}/v*-beta.*" "${PKG}/v*-dev-*"); do
+            git push origin ":refs/tags/$tag" || true
+          done
+
+      - name: Generate changelog
+        if: steps.stable.outputs.should_release == 'true'
+        id: changelog
+        run: |
+          PKG="${{ matrix.package }}"
+          BASE_VERSION="${{ steps.beta.outputs.base_version }}"
+          TAG="${PKG}/v${BASE_VERSION}"
+          PREV_TAG=$(git tag -l "${PKG}/v*" | grep -E "^${PKG}/v[0-9]+\.[0-9]+\.[0-9]+$" | grep -v "^$TAG$" | sort -V | tail -n1)
+          if [ -z "$PREV_TAG" ]; then
+            RANGE="$TAG"
+          else
+            RANGE="${PREV_TAG}..${TAG}"
+          fi
+          CHANGELOG=$(git log "$RANGE" --format="- %s (%h)" -- "${PKG}/")
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        if: steps.stable.outputs.should_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.stable.outputs.tag }}
+          name: "${{ matrix.package }} ${{ steps.beta.outputs.base_version }}"
+          body: |
+            ## What's Changed
+            ${{ steps.changelog.outputs.changelog }}
+          draft: false
+          prerelease: false

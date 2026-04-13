@@ -45,7 +45,8 @@ jobs:
         id: version
         run: |
           PKG="${{ matrix.package }}"
-          NEXT_BASE=$(bash ./scripts/next-version.sh "$PKG" "" "${{ github.head_ref }}")
+          BASE_REF=$(git merge-base origin/develop ${{ github.head_ref }})
+          NEXT_BASE=$(bash ./scripts/next-version.sh "$PKG" "$BASE_REF" "${{ github.head_ref }}")
           echo "next_base=$NEXT_BASE" >> $GITHUB_OUTPUT
 
       - name: Sanitize branch name

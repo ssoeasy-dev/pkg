@@ -1,0 +1,193 @@
+# .github/workflows/dev-version.yml
+name: Dev Version Management
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [develop]
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Job 1: Detect changed packages (reusable)
+  # --------------------------------------------------------------------------
+  detect:
+    name: Detect Changed Packages
+    uses: ./.github/workflows/detect-changed-packages.yml
+    with:
+      base-ref: origin/develop
+      head-ref: ${{ github.event.pull_request.head.sha }}
+
+  # --------------------------------------------------------------------------
+  # Job 2: Create/update dev tags (only for open/sync/reopen)
+  # --------------------------------------------------------------------------
+  create-dev:
+    name: Create Dev Version
+    needs: detect
+    if: |
+      github.event.action != 'closed' &&
+      needs.detect.outputs.packages != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    strategy:
+      matrix:
+        package: ${{ fromJson(needs.detect.outputs.packages) }}
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Setup Node.js (for semver)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install semver
+        run: npm install -g semver
+
+      - name: Compute next base version
+        id: version
+        run: |
+          PKG="${{ matrix.package }}"
+          BASE_REF=$(git merge-base origin/develop ${{ github.head_ref }})
+          NEXT_BASE=$(./scripts/next-version.sh "$PKG" "$BASE_REF" "${{ github.head_ref }}")
+          echo "next_base=$NEXT_BASE" >> $GITHUB_OUTPUT
+
+      - name: Sanitize branch name
+        id: branch
+        run: |
+          SANITIZED=$(./scripts/sanitize-branch.sh "${{ github.head_ref }}")
+          echo "sanitized=$SANITIZED" >> $GITHUB_OUTPUT
+
+      - name: Determine build number
+        id: build
+        run: |
+          PKG="${{ matrix.package }}"
+          BASE="${{ steps.version.outputs.next_base }}"
+          BRANCH="${{ steps.branch.outputs.sanitized }}"
+
+          PATTERN="${PKG}/v${BASE}-dev-${BRANCH}.[0-9]*"
+          EXISTING=$(git tag -l "$PATTERN" | sort -V | tail -n1)
+
+          if [ -z "$EXISTING" ]; then
+            BUILD=1
+          else
+            LAST_BUILD=$(echo "$EXISTING" | grep -oE '[0-9]+$')
+            BUILD=$((LAST_BUILD + 1))
+          fi
+          echo "build=$BUILD" >> $GITHUB_OUTPUT
+
+      - name: Create dev tag
+        id: tag
+        run: |
+          PKG="${{ matrix.package }}"
+          BASE="${{ steps.version.outputs.next_base }}"
+          BRANCH="${{ steps.branch.outputs.sanitized }}"
+          BUILD="${{ steps.build.outputs.build }}"
+
+          TAG="${PKG}/v${BASE}-dev-${BRANCH}.${BUILD}"
+
+          echo "Creating tag: $TAG"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Dev version for $PKG from branch ${{ github.head_ref }}"
+          git push origin "$TAG"
+
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pkg = '${{ matrix.package }}';
+            const tag = '${{ steps.tag.outputs.tag }}';
+            const version = tag.replace(`${pkg}/`, '');
+
+            const body = `## 📦 Dev version created for \`${pkg}\`
+
+            **Version:** \`${version}\`
+
+            **Usage in Go:**
+            \`\`\`bash
+            go get github.com/${{ github.repository }}/${pkg}@${version}
+            \`\`\`
+
+            **In go.mod:**
+            \`\`\`
+            require github.com/${{ github.repository }}/${pkg} ${version}
+            \`\`\`
+
+            > ⚠️ This is a temporary development version. It will be deleted when this PR is closed.
+            `;
+
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const marker = `Dev version for \`${pkg}\``;
+            const botComment = comments.data.find(c => 
+              c.user.type === 'Bot' && c.body.includes(marker)
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
+
+  # --------------------------------------------------------------------------
+  # Job 3: Cleanup dev tags when PR is closed (merged or not)
+  # --------------------------------------------------------------------------
+  cleanup-dev:
+    name: Cleanup Dev Tags
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sanitize branch name
+        id: branch
+        run: |
+          SANITIZED=$(./scripts/sanitize-branch.sh "${{ github.head_ref }}")
+          echo "sanitized=$SANITIZED" >> $GITHUB_OUTPUT
+
+      - name: Delete dev tags for this branch
+        run: |
+          BRANCH_PART="${{ steps.branch.outputs.sanitized }}"
+          echo "Deleting all dev tags for branch: $BRANCH_PART"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Find tags matching pattern: <pkg>/v*-dev-<branch>.*
+          TAGS=$(git tag -l | grep -E "^[^/]+/v.*-dev-${BRANCH_PART}\.[0-9]+$")
+
+          if [ -n "$TAGS" ]; then
+            for TAG in $TAGS; do
+              echo "Deleting tag: $TAG"
+              git push origin ":refs/tags/$TAG" || true
+            done
+            echo "Dev tags deleted successfully."
+          else
+            echo "No dev tags found for branch $BRANCH_PART"
+          fi

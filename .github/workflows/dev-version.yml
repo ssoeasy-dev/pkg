@@ -53,13 +53,13 @@ jobs:
         run: |
           PKG="${{ matrix.package }}"
           BASE_REF=$(git merge-base origin/develop ${{ github.head_ref }})
-          NEXT_BASE=$(./scripts/next-version.sh "$PKG" "$BASE_REF" "${{ github.head_ref }}")
+          NEXT_BASE=$(bash ./scripts/next-version.sh "$PKG" "$BASE_REF" "${{ github.head_ref }}")
           echo "next_base=$NEXT_BASE" >> $GITHUB_OUTPUT
 
       - name: Sanitize branch name
         id: branch
         run: |
-          SANITIZED=$(./scripts/sanitize-branch.sh "${{ github.head_ref }}")
+          SANITIZED=$(bash ./scripts/sanitize-branch.sh "${{ github.head_ref }}")
           echo "sanitized=$SANITIZED" >> $GITHUB_OUTPUT
 
       - name: Determine build number
@@ -168,7 +168,7 @@ jobs:
       - name: Sanitize branch name
         id: branch
         run: |
-          SANITIZED=$(./scripts/sanitize-branch.sh "${{ github.head_ref }}")
+          SANITIZED=$(bash ./scripts/sanitize-branch.sh "${{ github.head_ref }}")
           echo "sanitized=$SANITIZED" >> $GITHUB_OUTPUT
 
       - name: Delete dev tags for this branch

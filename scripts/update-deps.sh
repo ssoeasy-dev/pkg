@@ -59,7 +59,7 @@ update_pkg() {
         [[ ! -f "$modfile" ]] && continue
         if grep -qE "${module_path}[[:space:]]+${pattern}" "$modfile"; then
             echo "  В модуле $mod"
-            sed -i -E "s|(${module_path}[[:space:]]+)${pattern}|\1v${version}|g" "$modfile"
+            sed -i -E "s|(${module_path}[[:space:]]+)${pattern}|\1${version}|g" "$modfile"
         fi
     done
 }

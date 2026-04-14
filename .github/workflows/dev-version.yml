@@ -44,7 +44,7 @@ jobs:
       - name: Sanitize branch name
         id: branch
         run: |
-          SANITIZED=$(echo "${{ github.head_ref }}" | sed 's/[^a-zA-Z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//')
+          SANITIZED=$(bash ./scripts/sanitize-branch.sh "${{ github.head_ref }}")
           echo "sanitized=$SANITIZED" >> $GITHUB_OUTPUT
 
       - name: Determine build number
@@ -133,12 +133,19 @@ jobs:
               });
             }
 
-  cleanup-dev:
-    name: Cleanup Dev Tags
-    if: github.event.action == 'closed'
+  cleanup-dev-unmerged:
+    name: Cleanup Dev Tags (unmerged PR)
+    needs: detect
+    if: |
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == false &&
+      needs.detect.outputs.packages != '[]'
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    strategy:
+      matrix:
+        package: ${{ fromJson(needs.detect.outputs.packages) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -148,25 +155,38 @@ jobs:
       - name: Sanitize branch name
         id: branch
         run: |
-          SANITIZED=$(echo "${{ github.head_ref }}" | sed 's/[^a-zA-Z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//')
+          SANITIZED=$(bash ./scripts/sanitize-branch.sh "${{ github.head_ref }}")
           echo "sanitized=$SANITIZED" >> $GITHUB_OUTPUT
 
-      - name: Delete dev tags for this branch
+      - name: Delete dev tags
         run: |
-          BRANCH_PART="${{ steps.branch.outputs.sanitized }}"
-          echo "Deleting all dev tags for branch: $BRANCH_PART"
+          bash scripts/cleanup-tags.sh "${{ matrix.package }}" dev "${{ steps.branch.outputs.sanitized }}"
 
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+  cleanup-dev-merged:
+    name: Cleanup Dev Tags (merged PR)
+    needs: detect
+    if: |
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == true &&
+      needs.detect.outputs.packages != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        package: ${{ fromJson(needs.detect.outputs.packages) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-          TAGS=$(git tag -l | grep -E "^[^/]+/v.*-dev-${BRANCH_PART}\.[0-9]+$")
+      - name: Sanitize branch name
+        id: branch
+        run: |
+          SANITIZED=$(bash ./scripts/sanitize-branch.sh "${{ github.head_ref }}")
+          echo "sanitized=$SANITIZED" >> $GITHUB_OUTPUT
 
-          if [ -n "$TAGS" ]; then
-            for TAG in $TAGS; do
-              echo "Deleting tag: $TAG"
-              git push origin ":refs/tags/$TAG" || true
-            done
-            echo "Dev tags deleted successfully."
-          else
-            echo "No dev tags found for branch $BRANCH_PART"
-          fi
+      - name: Delete dev tags
+        run: |
+          bash scripts/cleanup-tags.sh "${{ matrix.package }}" dev "${{ steps.branch.outputs.sanitized }}"

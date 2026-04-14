@@ -32,7 +32,7 @@ if [[ "$MODE" != "beta" && "$MODE" != "stable" ]]; then
     exit 1
 fi
 
-# Настройка Go для приватных модулей (на случай если не сделано в workflow)
+# Настройка Go для приватных модулей
 go env -w GOPRIVATE=github.com/ssoeasy-dev/*
 go env -w GONOPROXY=github.com/ssoeasy-dev/*
 go env -w GONOSUMDB=github.com/ssoeasy-dev/*
@@ -40,54 +40,42 @@ go env -w GONOSUMDB=github.com/ssoeasy-dev/*
 ALL_PKGS=($(bash scripts/list-packages.sh))
 PREFIX="github.com/ssoeasy-dev/pkg/"
 
-if [[ "$MODE" == "beta" ]]; then
-    echo "=== Режим beta: замена ВСЕХ dev-версий на beta ==="
+update_pkg() {
+    local pkg="$1"
+    local version="$2"
+    local module_path="${PREFIX}${pkg}"
+    local pattern
 
-    # Собираем все dev-зависимости во всех go.mod
-    declare -A dev_deps
+    if [[ "$MODE" == "beta" ]]; then
+        pattern="v[0-9]+\.[0-9]+\.[0-9]+-dev-[^[:space:]]+"
+        echo "Обновление $module_path до $version (dev → beta)"
+    else
+        pattern="v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+"
+        echo "Обновление $module_path до стабильной $version (beta → stable)"
+    fi
+
     for mod in "${ALL_PKGS[@]}"; do
         modfile="${mod}/go.mod"
-        if [[ ! -f "$modfile" ]]; then continue; fi
-
-        grep -E "^[[:space:]]*${PREFIX}[^[:space:]]+ .*-dev-" "$modfile" | while read -r line; do
-            pkg=$(echo "$line" | sed -E "s|.*${PREFIX}([^[:space:]]+).*|\1|")
-            dev_deps[$pkg]="${dev_deps[$pkg]} $mod"
-        done
-    done
-
-    for pkg in "${!dev_deps[@]}"; do
-        beta_tag=$(git tag -l "${pkg}/v*-beta.*" | sort -V | tail -n1)
-        if [[ -z "$beta_tag" ]]; then
-            echo "⚠️  Для $pkg нет beta-тега, пропускаем"
-            continue
-        fi
-        version="${beta_tag#${pkg}/v}"
-        module_path="${PREFIX}${pkg}"
-        echo "Обновление $module_path до $version"
-
-        for mod in ${dev_deps[$pkg]}; do
+        [[ ! -f "$modfile" ]] && continue
+        if grep -qE "${module_path}[[:space:]]+${pattern}" "$modfile"; then
             echo "  В модуле $mod"
-            (cd "$mod" && go mod edit -require "${module_path}@v${version}")
-        done
+            sed -i -E "s|(${module_path}[[:space:]]+)${pattern}|\1v${version}|g" "$modfile"
+        fi
+    done
+}
+
+if [[ "$MODE" == "beta" ]]; then
+    echo "=== Режим beta: замена ВСЕХ dev-версий на beta ==="
+    # В режиме beta мы обновляем все переданные пакеты до указанных beta-версий
+    while [[ $# -gt 0 ]]; do
+        update_pkg "$1" "$2"
+        shift 2
     done
 else
     echo "=== Режим stable: замена beta-версий указанных пакетов на stable ==="
     while [[ $# -gt 0 ]]; do
-        pkg="$1"
-        version="$2"
+        update_pkg "$1" "$2"
         shift 2
-
-        module_path="${PREFIX}${pkg}"
-        echo "Обновление $module_path до стабильной $version"
-
-        for mod in "${ALL_PKGS[@]}"; do
-            modfile="${mod}/go.mod"
-            if [[ ! -f "$modfile" ]]; then continue; fi
-            if grep -qE "${module_path}[[:space:]]+.*-beta\\." "$modfile"; then
-                echo "  В модуле $mod"
-                (cd "$mod" && go mod edit -require "${module_path}@v${version}")
-            fi
-        done
     done
 fi
 

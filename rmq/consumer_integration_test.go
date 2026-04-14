@@ -54,7 +54,7 @@ func setupRabbitMQ(t *testing.T) *rmq.Config {
 	}
 }
 
-func newTestLogger() logger.Logger {
+func newTestLogger() *logger.Logger {
 	return logger.NewLogger(logger.EnvironmentTest, "rmq-test")
 }
 

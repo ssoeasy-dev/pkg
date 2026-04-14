@@ -28,7 +28,7 @@ func (c *Client) Put(ctx context.Context, key string, r io.Reader, contentType *
 		ContentType: contentType,
 	})
 	if err != nil {
-		return nil, errors.New(errors.ErrCreationFailed, "failed to upload object %q: %v", key, err)
+		return nil, errors.NewWrapf(errors.ErrInternal, err, "failed to upload object %q: %v", key, err)
 	}
 
 	return &PutResult{ETag: aws.ToString(out.ETag)}, nil

@@ -1,0 +1,72 @@
+name: Detect Changed Packages
+
+on:
+  workflow_call:
+    inputs:
+      base-ref:
+        required: true
+        type: string
+        description: "Previous commit SHA (github.event.before) or fallback reference"
+      head-ref:
+        required: true
+        type: string
+        description: "Current commit SHA (github.sha or github.event.pull_request.head.sha)"
+      fallback-branch:
+        required: false
+        type: string
+        default: "develop"
+        description: "Branch to use as fallback when base-ref is invalid (e.g., first push)"
+    outputs:
+      packages:
+        value: ${{ jobs.detect.outputs.packages }}
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.changed.outputs.packages }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine base commit
+        id: base
+        run: |
+          BASE="${{ inputs.base-ref }}"
+          HEAD="${{ inputs.head-ref }}"
+          FALLBACK_BRANCH="${{ inputs.fallback-branch }}"
+
+          # If BASE is invalid (empty, all zeros, or same as HEAD), fallback to merge-base with FALLBACK_BRANCH
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] || [ "$BASE" = "$HEAD" ]; then
+            echo "Invalid or identical base commit, using merge-base with origin/$FALLBACK_BRANCH"
+            git fetch origin "$FALLBACK_BRANCH" --depth=1 || true
+            BASE=$(git merge-base "origin/$FALLBACK_BRANCH" "$HEAD" 2>/dev/null || echo "origin/$FALLBACK_BRANCH")
+          fi
+
+          echo "base=$BASE" >> $GITHUB_OUTPUT
+
+      - name: Detect changed packages
+        id: changed
+        run: |
+          PACKAGES=("db" "logger" "grpc" "rmq" "s3" "errors")
+          CHANGED=()
+          BASE="${{ steps.base.outputs.base }}"
+          HEAD="${{ inputs.head-ref }}"
+
+          echo "Comparing BASE=$BASE .. HEAD=$HEAD"
+
+          for pkg in "${PACKAGES[@]}"; do
+            if git diff --name-only "$BASE" "$HEAD" | grep -q "^${pkg}/"; then
+              CHANGED+=("$pkg")
+            fi
+          done
+
+          if [ ${#CHANGED[@]} -eq 0 ]; then
+            JSON="[]"
+          else
+            JSON=$(printf '%s\n' "${CHANGED[@]}" | jq -R . | jq -s -c .)
+          fi
+
+          echo "Changed packages in this push: $JSON"
+          echo "packages=$JSON" >> $GITHUB_OUTPUT

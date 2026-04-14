@@ -66,25 +66,25 @@ func newLoggerWithWriter(environment Environment, prefix string, w io.Writer) Lo
 	}
 }
 
-func (l *logger) Debug(ctx context.Context, msg string, fields map[string]any) {
+func (l logger) Debug(ctx context.Context, msg string, fields map[string]any) {
 	if l.environment.IsVerbose() {
 		l.write("DEBUG", msg, enrichFromContext(ctx, fields))
 	}
 }
 
-func (l *logger) Info(ctx context.Context, msg string, fields map[string]any) {
+func (l logger) Info(ctx context.Context, msg string, fields map[string]any) {
 	l.write("INFO", msg, enrichFromContext(ctx, fields))
 }
 
-func (l *logger) Warn(ctx context.Context, msg string, fields map[string]any) {
+func (l logger) Warn(ctx context.Context, msg string, fields map[string]any) {
 	l.write("WARN", msg, enrichFromContext(ctx, fields))
 }
 
-func (l *logger) Error(ctx context.Context, msg string, fields map[string]any) {
+func (l logger) Error(ctx context.Context, msg string, fields map[string]any) {
 	l.write("ERROR", msg, enrichFromContext(ctx, fields))
 }
 
-func (l *logger) write(level, msg string, fields map[string]any) {
+func (l logger) write(level, msg string, fields map[string]any) {
 	output := fmt.Sprintf("[%s] %s", level, msg)
 	if len(fields) > 0 {
 		output += " | " + formatFields(fields)

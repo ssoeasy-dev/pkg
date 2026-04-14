@@ -44,7 +44,7 @@ func (c *Client) ListPages(ctx context.Context, prefix string, fn func([]ListRes
 			ContinuationToken: continuationToken,
 		})
 		if err != nil {
-			return errors.NewWrapf(errors.ErrInternal, err, "failed to list objects with prefix %q: %v", prefix, err)
+			return errors.New(errors.ErrGetFailed, "failed to list objects with prefix %q: %v", prefix, err)
 		}
 
 		page := make([]ListResult, 0, len(out.Contents))

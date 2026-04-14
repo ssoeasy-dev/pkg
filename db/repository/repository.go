@@ -3,11 +3,9 @@ package repository
 import (
 	"context"
 
-	"github.com/ssoeasy-dev/pkg/db"
 	"github.com/ssoeasy-dev/pkg/db/tx"
 	"github.com/ssoeasy-dev/pkg/errors"
 	"github.com/ssoeasy-dev/pkg/logger"
-
 	"gorm.io/gorm"
 )
 
@@ -37,6 +35,10 @@ type Repository[Model any] interface {
 	FindAll(ctx context.Context, opts ...RepositoryOption) ([]Model, error)
 	Count(ctx context.Context, opts ...RepositoryOption) (int64, error)
 	Exists(ctx context.Context, opts ...RepositoryOption) (bool, error)
+
+	// RawQuery выполняет произвольный SQL и сканирует результат в []Model.
+	// Для результатов отличных от Model используйте repo.DB(ctx).Raw(...).Scan(&dest).
+	RawQuery(ctx context.Context, sql string, args ...any) ([]Model, error)
 }
 
 type repository[Model any] struct {
@@ -64,78 +66,78 @@ func (r *repository[Model]) DB(ctx context.Context) *gorm.DB {
 
 func (r *repository[Model]) Create(ctx context.Context, value *Model, opts ...RepositoryOption) error {
 	if value == nil {
-		return errors.Newf(errors.ErrInvalidArgument, "%s not provided", r.EntityName)
+		return NewRepositoryError(errors.ErrInvalidArgument, r.EntityName, errors.ErrInvalidArgument)
 	}
-	DB := r.DB(ctx)
+	db := r.DB(ctx)
 	for _, opt := range opts {
-		DB = opt(DB)
+		db = opt(db)
 	}
-	if err := DB.Create(value).Error; err != nil {
-		return db.NewError(err, r.EntityName)
+	if err := db.Create(value).Error; err != nil {
+		return NewRepositoryError(err, r.EntityName, errors.ErrCreationFailed)
 	}
 	return nil
 }
 
 func (r *repository[Model]) Update(ctx context.Context, value map[string]any, opts ...RepositoryOption) (int64, error) {
-	DB := r.DB(ctx)
+	db := r.DB(ctx)
 	for _, opt := range opts {
-		DB = opt(DB)
+		db = opt(db)
 	}
-	result := DB.Updates(value)
+	result := db.Updates(value)
 	if result.Error != nil {
-		return 0, db.NewError(result.Error, r.EntityName)
+		return 0, NewRepositoryError(result.Error, r.EntityName, errors.ErrUpdateFailed)
 	}
 	return result.RowsAffected, nil
 }
 
 func (r *repository[Model]) Delete(ctx context.Context, force bool, opts ...RepositoryOption) (int64, error) {
-	DB := r.DB(ctx)
+	db := r.DB(ctx)
 	for _, opt := range opts {
-		DB = opt(DB)
+		db = opt(db)
 	}
 	if force {
-		DB = DB.Unscoped()
+		db = db.Unscoped()
 	}
-	result := DB.Delete(new(Model))
+	result := db.Delete(new(Model))
 	if result.Error != nil {
-		return 0, db.NewError(result.Error, r.EntityName)
+		return 0, NewRepositoryError(result.Error, r.EntityName, errors.ErrDeleteFailed)
 	}
 	return result.RowsAffected, nil
 }
 
 func (r *repository[Model]) FindOne(ctx context.Context, opts ...RepositoryOption) (*Model, error) {
-	DB := r.DB(ctx)
+	db := r.DB(ctx)
 	for _, opt := range opts {
-		DB = opt(DB)
+		db = opt(db)
 	}
 	var model Model
 	// Take вместо First: не добавляет неявный ORDER BY primary_key.
-	if err := DB.Take(&model).Error; err != nil {
-		return nil, db.NewError(err, r.EntityName)
+	if err := db.Take(&model).Error; err != nil {
+		return nil, NewRepositoryError(err, r.EntityName, errors.ErrGetFailed)
 	}
 	return &model, nil
 }
 
 func (r *repository[Model]) FindAll(ctx context.Context, opts ...RepositoryOption) ([]Model, error) {
-	DB := r.DB(ctx)
+	db := r.DB(ctx)
 	for _, opt := range opts {
-		DB = opt(DB)
+		db = opt(db)
 	}
 	var models []Model
-	if err := DB.Find(&models).Error; err != nil {
-		return nil, db.NewError(err, r.EntityName)
+	if err := db.Find(&models).Error; err != nil {
+		return nil, NewRepositoryError(err, r.EntityName, errors.ErrGetFailed)
 	}
 	return models, nil
 }
 
 func (r *repository[Model]) Count(ctx context.Context, opts ...RepositoryOption) (int64, error) {
-	DB := r.DB(ctx)
+	db := r.DB(ctx)
 	for _, opt := range opts {
-		DB = opt(DB)
+		db = opt(db)
 	}
 	var count int64
-	if err := DB.Count(&count).Error; err != nil {
-		return 0, db.NewError(err, r.EntityName)
+	if err := db.Count(&count).Error; err != nil {
+		return 0, NewRepositoryError(err, r.EntityName, errors.ErrGetFailed)
 	}
 	return count, nil
 }
@@ -146,4 +148,12 @@ func (r *repository[Model]) Exists(ctx context.Context, opts ...RepositoryOption
 		return false, err
 	}
 	return count > 0, nil
+}
+
+func (r *repository[Model]) RawQuery(ctx context.Context, sql string, args ...any) ([]Model, error) {
+	var results []Model
+	if err := r.DB(ctx).Raw(sql, args...).Scan(&results).Error; err != nil {
+		return nil, NewRepositoryError(err, r.EntityName, errors.ErrGetFailed)
+	}
+	return results, nil
 }

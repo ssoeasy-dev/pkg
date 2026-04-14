@@ -1,6 +1,6 @@
 # pkg/db
 
-Обёртка над GORM для PostgreSQL. Включает Generic Repository с типизированными CRUD-операциями, Transaction Manager и стандартизированные ошибки, совместимые с пакетом `errors`.
+Обёртка над GORM для PostgreSQL. Включает Generic Repository с типизированными CRUD-операциями, Transaction Manager и стандартизированные ошибки репозитория.
 
 ## Установка
 
@@ -68,15 +68,17 @@ err := txManager.WithTransaction(ctx, func(ctx context.Context) error {
 conn := txManager.GetDB(ctx)
 ```
 
+Ошибки `Begin`/`Commit`/`Rollback` оборачивают sentinel-значения `tx.ErrTxBegin`, `tx.ErrTxCommit`, `tx.ErrTxRollback` — используйте `errors.Is` для ветвления.
+
 ### Mock для тестов
 
 ```go
 mock := tx.NewMockTxManager(nil) // log опциональный, nil допустим
 mock.WithTransactionalSuccess(ctx)           // имитирует успешную транзакцию
 mock.WithTransactionalRollback(ctx, err)     // имитирует rollback
-mock.WithTransactionErrBegin(ctx)            // fn не вызывается, возвращает ErrInternal
-mock.WithTransactionErrCommit(ctx)           // fn вызывается, возвращает ErrInternal
-mock.WithTransactionErrRollback(ctx)         // fn вызывается, возвращает ErrInternal
+mock.WithTransactionErrBegin(ctx)            // fn не вызывается, возвращает ErrTxBegin
+mock.WithTransactionErrCommit(ctx)           // fn вызывается, возвращает ErrTxCommit
+mock.WithTransactionErrRollback(ctx)         // fn вызывается, возвращает ErrTxRollback
 ```
 
 ## Generic Repository
@@ -211,41 +213,26 @@ repository.WithClauses(clause.OnConflict{DoNothing: true})
 
 ## Ошибки репозитория
 
-Методы репозитория возвращают ошибки пакета `errors`. Используйте `errors.Is` для проверки вида ошибки.  
-Оригинальная причина (pgx/gorm ошибка) доступна через `errors.Unwrap`, а полное техническое сообщение — через `errors.FullError` (только для логирования).
+Все ошибки совместимы с `errors.Is`. Оригинальная причина (pgx/gorm ошибка) доступна через `errors.Unwrap` — используйте её для логирования.
 
 ```go
-import "github.com/ssoeasy-dev/pkg/errors"
-
 err := repo.FindOne(ctx, repository.WithConditions(map[string]any{"id": id}))
 
 switch {
-    case errors.Is(err, errors.ErrNotFound):
-        // запись не найдена
-    case errors.Is(err, errors.ErrAlreadyExists):
-        // нарушение unique constraint
-        // сообщение содержит имя поля и значение: "already exists: user with email=x@y.com"
-    case errors.Is(err, errors.ErrFailedPrecondition):
-        // нарушение внешнего ключа или check constraint
-    default:
-        // логируем полную цепочку
-    log.Error(ctx, errors.FullError(err), nil)
+case errors.Is(err, repository.ErrNotFound):
+    // запись не найдена
+case errors.Is(err, repository.ErrAlreadyExists):
+    // нарушение unique constraint
+    // сообщение содержит имя поля и значение: "already exists: user with email=x@y.com"
+case errors.Is(err, repository.ErrForeignKey):
+    // нарушение FK
+}
+
+// Логирование оригинальной pgx-ошибки:
+if cause := errors.Unwrap(err); cause != nil {
+    log.Error(ctx, cause.Error(), nil)
 }
 ```
-
-Полный маппинг кодов PostgreSQL на виды ошибок реализован в функции `db.NewError`.  
-Основные соответствия:
-
-| PostgreSQL код  | Вид ошибки (`errors.Kind`) | Пояснение                  |
-| --------------- | -------------------------- | -------------------------- |
-| `23505`         | `ErrAlreadyExists`         | Unique violation           |
-| `23503`         | `ErrFailedPrecondition`    | Foreign key violation      |
-| `23502`         | `ErrInvalidArgument`       | Not null violation         |
-| `23514`         | `ErrFailedPrecondition`    | Check constraint violation |
-| `40P01`         | `ErrAborted`               | Deadlock detected          |
-| `55P03`         | `ErrInternal`              | Lock timeout               |
-| `57P01`,`57P02` | `ErrUnavailable`           | Database shutdown          |
-| `08000`‑`08006` | `ErrUnavailable`           | Connection exceptions      |
 
 ## MockRepository
 
@@ -261,9 +248,18 @@ mock.On("Create", ctx, mock.Anything).Return(nil)
 mock.On("FindOne", ctx, mock.Anything).Return(&User{ID: id}, nil)
 
 // Готовые хелперы для типичных сценариев
-mock.OnFindOneReturn(ctx, &user)
-mock.FindOneErrNotFound(ctx)
+mock.On("FindOne", ctx, mock.Anything).Return(nil, repository.ErrNotFound)
 ```
+
+| Sentinel            | Postgres код | Описание                                           |
+| ------------------- | ------------ | -------------------------------------------------- |
+| `ErrNotFound`       | —            | `gorm.ErrRecordNotFound`                           |
+| `ErrAlreadyExists`  | `23505`      | Unique violation (поле и значение в `err.Error()`) |
+| `ErrForeignKey`     | `23503`      | FK violation                                       |
+| `ErrCreationFailed` | —            | Ошибка создания                                    |
+| `ErrUpdateFailed`   | —            | Ошибка обновления                                  |
+| `ErrDeleteFailed`   | —            | Ошибка удаления                                    |
+| `ErrGetFailed`      | —            | Ошибка чтения                                      |
 
 ## Лицензия
 

@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/ssoeasy-dev/pkg/db/tx"
 	"github.com/ssoeasy-dev/pkg/errors"
-	l "github.com/ssoeasy-dev/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	testcontainerspg "github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -17,10 +16,6 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
-
-func newTestLogger() l.Logger {
-    return l.NewLogger(l.EnvironmentTest, "tx-test")
-}
 
 // ─── Test model ───────────────────────────────────────────────────────────────
 
@@ -64,8 +59,7 @@ func setupTxPostgres(t *testing.T) *gorm.DB {
 
 func TestTxManager_WithTransaction_Commit(t *testing.T) {
 	db := setupTxPostgres(t)
-	log := newTestLogger()
-	mgr := tx.NewTxManager(db, log)
+	mgr := tx.NewTxManager(db)
 
 	id := uuid.New()
 	err := mgr.WithTransaction(context.Background(), func(ctx context.Context) error {
@@ -80,11 +74,10 @@ func TestTxManager_WithTransaction_Commit(t *testing.T) {
 
 func TestTxManager_WithTransaction_Rollback_OnFnError(t *testing.T) {
 	db := setupTxPostgres(t)
-	log := newTestLogger()
-	mgr := tx.NewTxManager(db, log)
+	mgr := tx.NewTxManager(db)
 
 	id := uuid.New()
-	expectedErr := errors.New(errors.ErrInternal, "intentional error")
+	expectedErr := errors.New(errors.ErrTxRollback, "intentional error")
 	err := mgr.WithTransaction(context.Background(), func(ctx context.Context) error {
 		_ = mgr.GetDB(ctx).Create(&TxArticle{ID: id, Title: "should rollback"})
 		return expectedErr
@@ -98,8 +91,7 @@ func TestTxManager_WithTransaction_Rollback_OnFnError(t *testing.T) {
 
 func TestTxManager_WithTransaction_Rollback_OnPanic(t *testing.T) {
 	db := setupTxPostgres(t)
-	log := newTestLogger()
-	mgr := tx.NewTxManager(db, log)
+	mgr := tx.NewTxManager(db)
 
 	id := uuid.New()
 	assert.Panics(t, func() {
@@ -117,8 +109,7 @@ func TestTxManager_WithTransaction_Rollback_OnPanic(t *testing.T) {
 func TestTxManager_WithTransaction_NestedWorkIsVisible_InsideTx(t *testing.T) {
 	// Создаём две записи в одной транзакции — обе должны быть видны внутри той же tx.
 	db := setupTxPostgres(t)
-	log := newTestLogger()
-	mgr := tx.NewTxManager(db, log)
+	mgr := tx.NewTxManager(db)
 
 	id1, id2 := uuid.New(), uuid.New()
 	err := mgr.WithTransaction(context.Background(), func(ctx context.Context) error {
@@ -143,8 +134,7 @@ func TestTxManager_WithTransaction_NestedWorkIsVisible_InsideTx(t *testing.T) {
 
 func TestTxManager_Begin_Commit(t *testing.T) {
 	db := setupTxPostgres(t)
-	log := newTestLogger()
-	mgr := tx.NewTxManager(db, log)
+	mgr := tx.NewTxManager(db)
 	ctx := context.Background()
 
 	txCtx, err := mgr.Begin(ctx)
@@ -162,8 +152,7 @@ func TestTxManager_Begin_Commit(t *testing.T) {
 
 func TestTxManager_Begin_Rollback(t *testing.T) {
 	db := setupTxPostgres(t)
-	log := newTestLogger()
-	mgr := tx.NewTxManager(db, log)
+	mgr := tx.NewTxManager(db)
 	ctx := context.Background()
 
 	txCtx, err := mgr.Begin(ctx)
@@ -183,8 +172,7 @@ func TestTxManager_Begin_Rollback(t *testing.T) {
 
 func TestTxManager_GetDB_WithoutTx_ReturnsBaseDB(t *testing.T) {
 	db := setupTxPostgres(t)
-	log := newTestLogger()
-	mgr := tx.NewTxManager(db, log)
+	mgr := tx.NewTxManager(db)
 
 	result := mgr.GetDB(context.Background())
 	require.NotNil(t, result)
@@ -200,8 +188,7 @@ func TestTxManager_GetDB_WithoutTx_ReturnsBaseDB(t *testing.T) {
 
 func TestTxManager_GetDB_WithTx_ReturnsTxDB(t *testing.T) {
 	db := setupTxPostgres(t)
-	log := newTestLogger()
-	mgr := tx.NewTxManager(db, log)
+	mgr := tx.NewTxManager(db)
 	ctx := context.Background()
 
 	txCtx, err := mgr.Begin(ctx)
@@ -228,18 +215,16 @@ func TestTxManager_GetDB_WithTx_ReturnsTxDB(t *testing.T) {
 
 func TestTxManager_Commit_NoTx_ReturnsErrCommit(t *testing.T) {
 	db := setupTxPostgres(t)
-	log := newTestLogger()
-	mgr := tx.NewTxManager(db, log)
+	mgr := tx.NewTxManager(db)
 
 	err := mgr.Commit(context.Background())
-	require.ErrorIs(t, err, errors.ErrInternal)
+	require.ErrorIs(t, err, errors.ErrTxCommit)
 }
 
 func TestTxManager_Rollback_NoTx_ReturnsErrRollback(t *testing.T) {
 	db := setupTxPostgres(t)
-	log := newTestLogger()
-	mgr := tx.NewTxManager(db, log)
+	mgr := tx.NewTxManager(db)
 
 	err := mgr.Rollback(context.Background())
-	require.ErrorIs(t, err, errors.ErrInternal)
+	require.ErrorIs(t, err, errors.ErrTxRollback)
 }

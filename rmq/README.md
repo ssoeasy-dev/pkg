@@ -74,12 +74,12 @@ consumer.Stop()
 
 ```go
 // Клиент
-func NewClient(log logger.Logger, cfg *Config) (*Client, error)
+func NewClient(log *logger.Logger, cfg *Config) (*Client, error)
 func (c *Client) Close() error
 func (c *Client) Reconnect() error
 
 // Consumer
-func NewConsumer(log logger.Logger, client *Client, cfg *ConsumerConfig) (*Consumer, error)
+func NewConsumer(log *logger.Logger, client *Client, cfg *ConsumerConfig) (*Consumer, error)
 func (c *Consumer) Start(ctx context.Context) error  // неблокирующий
 func (c *Consumer) Stop()                            // идемпотентный
 

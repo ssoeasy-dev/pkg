@@ -32,6 +32,11 @@ if [[ "$MODE" != "beta" && "$MODE" != "stable" ]]; then
     exit 1
 fi
 
+# Настройка Go для приватных модулей (на случай если не сделано в workflow)
+go env -w GOPRIVATE=github.com/ssoeasy-dev/*
+go env -w GONOPROXY=github.com/ssoeasy-dev/*
+go env -w GONOSUMDB=github.com/ssoeasy-dev/*
+
 ALL_PKGS=($(bash scripts/list-packages.sh))
 PREFIX="github.com/ssoeasy-dev/pkg/"
 
@@ -86,11 +91,11 @@ else
     done
 fi
 
-# Очищаем go.sum и заново генерируем для всех модулей
+# Очищаем go.sum, кэш модулей и генерируем заново
 for mod in "${ALL_PKGS[@]}"; do
     if [[ -f "${mod}/go.mod" ]]; then
-        echo "  Очистка и обновление go.sum для $mod"
-        (cd "$mod" && rm -f go.sum && go mod tidy)
+        echo "  Полная очистка и обновление $mod"
+        (cd "$mod" && rm -f go.sum && go clean -modcache && go mod tidy)
         git add "${mod}/go.mod" "${mod}/go.sum" 2>/dev/null || true
     fi
 done

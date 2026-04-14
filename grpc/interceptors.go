@@ -108,11 +108,17 @@ func RecoveryInterceptor(log logger.Logger) grpc.UnaryServerInterceptor {
 func ErrorHandlerInterceptor(log logger.Logger, handler ErrorHandler) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, next grpc.UnaryHandler) (any, error) {
 		resp, err := next(ctx, req)
-		if err != nil && handler != nil {
-			err = errorHandler(ctx, log, err)
+		if err != nil {
+			if _, ok := status.FromError(err); ok {
+				return resp, err
+			}
 			if handler != nil {
 				err = handler(err)
 			}
+			if _, ok := status.FromError(err); ok {
+				return resp, err
+			}
+			err = errorHandler(ctx, log, err)
 		}
 		return resp, err
 	}

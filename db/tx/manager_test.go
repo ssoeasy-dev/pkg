@@ -10,29 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ─── Sentinel errors ──────────────────────────────────────────────────────────
-
-func TestErrors_Distinct(t *testing.T) {
-	assert.NotNil(t, errors.ErrTxBegin)
-	assert.NotNil(t, errors.ErrTxCommit)
-	assert.NotNil(t, errors.ErrTxRollback)
-
-	assert.NotEqual(t, errors.ErrTxBegin, errors.ErrTxCommit)
-	assert.NotEqual(t, errors.ErrTxBegin, errors.ErrTxRollback)
-	assert.NotEqual(t, errors.ErrTxCommit, errors.ErrTxRollback)
-}
-
-func TestErrors_IsCompatible(t *testing.T) {
-	// Обёрнутые ошибки совместимы с errors.Is.
-	// wrapped := errors.New(errors.ErrTxBegin.Error())
-	// _ = wrapped // просто убедимся что конструируется
-
-	// Sentinel сами по себе работают с errors.Is.
-	assert.ErrorIs(t, errors.ErrTxBegin, errors.ErrTxBegin)
-	assert.ErrorIs(t, errors.ErrTxCommit, errors.ErrTxCommit)
-	assert.ErrorIs(t, errors.ErrTxRollback, errors.ErrTxRollback)
-}
-
 // ─── MockTxManager ────────────────────────────────────────────────────────────
 
 func TestMockTxManager_WithTransactionalSuccess_FnCalledAndNilReturned(t *testing.T) {
@@ -96,7 +73,7 @@ func TestMockTxManager_WithTransactionErrBegin_FnNotCalled(t *testing.T) {
 		return nil
 	})
 
-	require.ErrorIs(t, err, errors.ErrTxBegin)
+	require.ErrorIs(t, err, errors.ErrInternal)
 	assert.False(t, called, "fn не должен вызываться при ошибке Begin")
 	mgr.AssertExpectations(t)
 }
@@ -112,7 +89,7 @@ func TestMockTxManager_WithTransactionErrCommit_FnCalledErrReturned(t *testing.T
 		return nil
 	})
 
-	require.ErrorIs(t, err, errors.ErrTxCommit)
+	require.ErrorIs(t, err, errors.ErrInternal)
 	assert.True(t, called)
 	mgr.AssertExpectations(t)
 }
@@ -128,7 +105,7 @@ func TestMockTxManager_WithTransactionErrRollback_FnCalledErrReturned(t *testing
 		return nil
 	})
 
-	require.ErrorIs(t, err, errors.ErrTxRollback)
+	require.ErrorIs(t, err, errors.ErrInternal)
 	assert.True(t, called)
 	mgr.AssertExpectations(t)
 }
@@ -146,20 +123,20 @@ func TestMockTxManager_GetDB_ReturnsNilWhenNotSetUp(t *testing.T) {
 func TestMockTxManager_Begin_ReturnsErrWhenSetUp(t *testing.T) {
 	mgr := tx.NewMockTxManager(nil)
 	ctx := context.Background()
-	mgr.On("Begin", ctx).Return(ctx, errors.ErrTxBegin)
+	mgr.On("Begin", ctx).Return(ctx, errors.ErrInternal)
 
 	_, err := mgr.Begin(ctx)
-	require.ErrorIs(t, err, errors.ErrTxBegin)
+	require.ErrorIs(t, err, errors.ErrInternal)
 	mgr.AssertExpectations(t)
 }
 
 func TestMockTxManager_Commit_ReturnsErrWhenSetUp(t *testing.T) {
 	mgr := tx.NewMockTxManager(nil)
 	ctx := context.Background()
-	mgr.On("Commit", ctx).Return(errors.ErrTxCommit)
+	mgr.On("Commit", ctx).Return(errors.ErrInternal)
 
 	err := mgr.Commit(ctx)
-	require.ErrorIs(t, err, errors.ErrTxCommit)
+	require.ErrorIs(t, err, errors.ErrInternal)
 	mgr.AssertExpectations(t)
 }
 

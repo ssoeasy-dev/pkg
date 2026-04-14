@@ -87,7 +87,7 @@ func (m *MockRepository[Model]) CreateErrAlreadyExists(ctx context.Context) {
 }
 
 func (m *MockRepository[Model]) CreateErrCreateFailed(ctx context.Context) {
-	m.On("Create", ctx, mock.Anything, mock.Anything).Return(errors.ErrCreationFailed)
+	m.On("Create", ctx, mock.Anything, mock.Anything).Return(errors.ErrInternal)
 }
 
 // ─── Update helpers ───────────────────────────────────────────────────────────
@@ -101,7 +101,7 @@ func (m *MockRepository[Model]) UpdateErrNotFound(ctx context.Context) {
 }
 
 func (m *MockRepository[Model]) UpdateErrUpdateFailed(ctx context.Context) {
-	m.On("Update", ctx, mock.Anything, mock.Anything).Return(int64(0), errors.ErrUpdateFailed)
+	m.On("Update", ctx, mock.Anything, mock.Anything).Return(int64(0), errors.ErrInternal)
 }
 
 // ─── Delete helpers ───────────────────────────────────────────────────────────
@@ -115,7 +115,7 @@ func (m *MockRepository[Model]) DeleteErrNotFound(ctx context.Context) {
 }
 
 func (m *MockRepository[Model]) DeleteErrDeleteFailed(ctx context.Context) {
-	m.On("Delete", ctx, mock.Anything, mock.Anything).Return(int64(0), errors.ErrDeleteFailed)
+	m.On("Delete", ctx, mock.Anything, mock.Anything).Return(int64(0), errors.ErrInternal)
 }
 
 // ─── FindOne helpers ──────────────────────────────────────────────────────────
@@ -129,7 +129,7 @@ func (m *MockRepository[Model]) FindOneErrNotFound(ctx context.Context) {
 }
 
 func (m *MockRepository[Model]) FindOneErrGetFailed(ctx context.Context) {
-	m.On("FindOne", ctx, mock.Anything).Return(nil, errors.ErrGetFailed)
+	m.On("FindOne", ctx, mock.Anything).Return(nil, errors.ErrInternal)
 }
 
 // ─── FindAll helpers ──────────────────────────────────────────────────────────
@@ -139,7 +139,7 @@ func (m *MockRepository[Model]) OnFindAllReturn(ctx context.Context, models []Mo
 }
 
 func (m *MockRepository[Model]) FindAllErrGetFailed(ctx context.Context) {
-	m.On("FindAll", ctx, mock.Anything).Return(nil, errors.ErrGetFailed)
+	m.On("FindAll", ctx, mock.Anything).Return(nil, errors.ErrInternal)
 }
 
 // ─── Count helpers ────────────────────────────────────────────────────────────
@@ -149,7 +149,7 @@ func (m *MockRepository[Model]) OnCountReturn(ctx context.Context, count int64) 
 }
 
 func (m *MockRepository[Model]) CountErrGetFailed(ctx context.Context) {
-	m.On("Count", ctx, mock.Anything).Return(int64(0), errors.ErrGetFailed)
+	m.On("Count", ctx, mock.Anything).Return(int64(0), errors.ErrInternal)
 }
 
 // ─── Exists helpers ───────────────────────────────────────────────────────────
@@ -159,7 +159,7 @@ func (m *MockRepository[Model]) OnExistsReturn(ctx context.Context, exists bool)
 }
 
 func (m *MockRepository[Model]) ExistsErrGetFailed(ctx context.Context) {
-	m.On("Exists", ctx, mock.Anything).Return(false, errors.ErrGetFailed)
+	m.On("Exists", ctx, mock.Anything).Return(false, errors.ErrInternal)
 }
 
 // ─── DB helpers ───────────────────────────────────────────────────────────────

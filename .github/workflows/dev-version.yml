@@ -10,8 +10,8 @@ jobs:
     name: Detect Changed Packages
     uses: ./.github/workflows/detect-changed-packages.yml
     with:
-      base-ref: ${{ github.event.before }}
-      head-ref: ${{ github.sha }}
+      base-ref: ${{ github.event.pull_request.base.sha }}
+      head-ref: ${{ github.event.pull_request.head.sha }}
       fallback-branch: main
 
   create-dev:

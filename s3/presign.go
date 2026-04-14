@@ -23,7 +23,7 @@ func (c *Client) Presign(ctx context.Context, key string, ttl time.Duration) (st
 		Key:    aws.String(key),
 	}, s3.WithPresignExpires(ttl))
 	if err != nil {
-		return "", errors.NewWrapf(errors.ErrInternal, err, "failed to presign %q: %v", key, err)
+		return "", errors.New(errors.ErrCreationFailed, "failed to presign %q: %v", key, err)
 	}
 	return out.URL, nil
 }

@@ -77,5 +77,5 @@ done
 if [[ ${#levels[@]} -eq 0 ]]; then
     echo "[]"
 else
-    printf '%s\n' "${levels[@]}" | jq -s .
+    printf '%s\n' "${levels[@]}" | jq -s -c .
 fi

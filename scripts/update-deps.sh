@@ -56,7 +56,7 @@ update_pkg() {
         # Проверяем, что модуль зависит от пакета и версия соответствует шаблону
         if grep -qE "${module_path}[[:space:]]+${pattern}" "${mod}/go.mod"; then
             echo "  Обновление ${mod}"
-            (cd "$mod" && go get "${module_path}@${version}")
+            (cd "$mod" && go mod edit -require "${module_path}@${version}")
         fi
     done
 }

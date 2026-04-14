@@ -57,6 +57,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
+      - name: Clean module cache
+        run: go clean -modcache
+
       - name: Download dependencies
         working-directory: ${{ matrix.package }}
         run: go mod download

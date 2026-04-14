@@ -9,9 +9,9 @@ jobs:
     name: Detect Changed Packages
     uses: ./.github/workflows/detect-changed-packages.yml
     with:
-        base-ref: ${{ github.event.before }}
-        head-ref: ${{ github.sha }}
-        fallback-branch: develop
+      base-ref: ${{ github.event.before }}
+      head-ref: ${{ github.sha }}
+      fallback-branch: develop
 
   create-beta:
     name: Create Beta Version
@@ -35,54 +35,35 @@ jobs:
         with:
           go-version: "1.24"
 
-      - name: Find maximum base version from dev tags
-        id: max_dev
+      - name: Compute next base version
+        id: base_version
         run: |
           PKG="${{ matrix.package }}"
-          # Все dev-теги пакета
-          DEV_TAGS=$(git tag -l "${PKG}/v*-dev-*")
-          MAX_BASE="0.0.0"
-          for tag in $DEV_TAGS; do
-            # Извлекаем базовую версию (до -dev-)
-            base=$(echo "$tag" | sed -E "s|^${PKG}/v([0-9]+\.[0-9]+\.[0-9]+)-dev-.*|\1|")
-            if [ -n "$base" ] && [ "$(printf '%s\n' "$MAX_BASE" "$base" | sort -V | tail -n1)" = "$base" ]; then
-              MAX_BASE="$base"
-            fi
-          done
-          echo "max_base=$MAX_BASE" >> $GITHUB_OUTPUT
+          NEXT_BASE=$(bash ./scripts/next-version.sh "$PKG")
+          echo "next_base=$NEXT_BASE" >> $GITHUB_OUTPUT
+          echo "Next base version for $PKG: $NEXT_BASE"
 
-      - name: Compare with last beta
+      - name: Determine beta build number
         id: beta
         run: |
           PKG="${{ matrix.package }}"
-          MAX_BASE="${{ steps.max_dev.outputs.max_base }}"
+          BASE="${{ steps.base_version.outputs.next_base }}"
 
-          # Последний beta-тег пакета
-          LAST_BETA=$(git tag -l "${PKG}/v*-beta.*" | sort -V | tail -n1)
+          # Ищем последний beta-тег с точно такой же базовой версией
+          LAST_BETA=$(git tag -l "${PKG}/v${BASE}-beta.*" | sort -V | tail -n1)
+
           if [ -z "$LAST_BETA" ]; then
-            LAST_BETA_BASE="0.0.0"
-            LAST_BUILD=0
+            BUILD=1
           else
-            LAST_BETA_BASE=$(echo "$LAST_BETA" | sed -E "s|^${PKG}/v([0-9]+\.[0-9]+\.[0-9]+)-beta\.[0-9]+|\1|")
             LAST_BUILD=$(echo "$LAST_BETA" | grep -oE '[0-9]+$' || echo "0")
+            BUILD=$((LAST_BUILD + 1))
           fi
 
-          # Сравниваем базовые версии
-          if [ "$(printf '%s\n' "$LAST_BETA_BASE" "$MAX_BASE" | sort -V | tail -n1)" = "$MAX_BASE" ] && [ "$MAX_BASE" != "$LAST_BETA_BASE" ]; then
-            # Новая мажорная/минорная/патч-версия
-            if [ "$MAX_BASE" = "$LAST_BETA_BASE" ]; then
-              BUILD=$((LAST_BUILD + 1))
-            else
-              BUILD=1
-            fi
-            echo "should_create=true" >> $GITHUB_OUTPUT
-            echo "beta_version=${MAX_BASE}-beta.${BUILD}" >> $GITHUB_OUTPUT
-          else
-            echo "should_create=false" >> $GITHUB_OUTPUT
-          fi
+          echo "build=$BUILD" >> $GITHUB_OUTPUT
+          echo "beta_version=${BASE}-beta.${BUILD}" >> $GITHUB_OUTPUT
+          echo "Will create beta tag: ${PKG}/v${BASE}-beta.${BUILD}"
 
       - name: Create beta tag and update deps
-        if: steps.beta.outputs.should_create == 'true'
         run: |
           PKG="${{ matrix.package }}"
           VERSION="${{ steps.beta.outputs.beta_version }}"
@@ -99,7 +80,7 @@ jobs:
           git push origin develop
 
       - name: Delete dev tags for this package
-        if: steps.beta.outputs.should_create == 'true'
+        if: always() && steps.beta.outputs.beta_version != ''
         run: |
           PKG="${{ matrix.package }}"
           echo "Deleting all dev tags for $PKG"

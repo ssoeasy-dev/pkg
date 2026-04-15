@@ -110,18 +110,23 @@ jobs:
           done
 
       - name: Create GitHub Releases
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ matrix.package }}/v${{ env[format('STABLE_{0}', matrix.package)] }}
-          name: "${{ matrix.package }} ${{ env[format('STABLE_{0}', matrix.package)] }}"
-          body: |
-            ## What's Changed
-            ${{ env[format('CHANGELOG_{0}', matrix.package)] }}
-          draft: false
-          prerelease: false
-        strategy:
-          matrix:
-            package: ${{ fromJson(needs.detect.outputs.packages) }}
+        if: always()
+        run: |
+          for pkg in $(echo '${{ needs.detect.outputs.packages }}' | jq -r '.[]'); do
+            TAG="${pkg}/v${STABLE_VERSIONS[$pkg]}"
+            if git rev-parse "$TAG" >/dev/null 2>&1; then
+              echo "Creating release for $TAG"
+              gh release create "$TAG" \
+                --repo "${{ github.repository }}" \
+                --title "$pkg ${STABLE_VERSIONS[$pkg]}" \
+                --notes "$(echo "${{ env[format('CHANGELOG_{0}', pkg)] }}")" \
+                --target "${{ github.sha }}"
+            else
+              echo "Tag $TAG not found, skipping release"
+            fi
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Cleanup beta tags
         if: always()

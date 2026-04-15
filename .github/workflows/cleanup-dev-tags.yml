@@ -9,7 +9,6 @@ on:
 permissions:
   actions: read
   contents: write
-  pull-requests: read
 
 jobs:
   cleanup:
@@ -21,40 +20,35 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Find merged PR for commit
-        id: pr
+      - name: Extract branch name from merge commit
+        id: branch
         run: |
           HEAD_SHA="${{ github.event.workflow_run.head_sha }}"
-          echo "Commit SHA: $HEAD_SHA"
+          MSG=$(git log -1 --format=%s "$HEAD_SHA")
+          echo "Commit message: $MSG"
 
-          # Ищем закрытые PR с base=develop, у которых merge_commit_sha совпадает с HEAD_SHA
-          PR_JSON=$(gh api "repos/${{ github.repository }}/pulls" \
-            -f state=closed \
-            -f base=develop \
-            -f per_page=100 \
-            --paginate \
-            --jq '.[] | select(.merge_commit_sha == "'"$HEAD_SHA"'")')
+          # Формат GitHub UI: "Merge pull request #XX from owner/branch"
+          BRANCH=$(echo "$MSG" | sed -n 's/.* from [^/]*\/\(.*\)$/\1/p')
+          if [ -z "$BRANCH" ]; then
+            # Формат CLI: "Merge branch 'feature/foo' into develop"
+            BRANCH=$(echo "$MSG" | sed -n "s/.*Merge branch '\\(.*\\)' into .*/\\1/p")
+          fi
 
-          if [ -z "$PR_JSON" ]; then
-            echo "No merged PR found with merge_commit_sha = $HEAD_SHA, skipping."
+          if [ -z "$BRANCH" ]; then
+            echo "Could not determine branch name, skipping dev tag cleanup."
             echo "skip=true" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          # Берём первый (должен быть один)
-          PR_NUMBER=$(echo "$PR_JSON" | jq -r '.number')
-          HEAD_REF=$(echo "$PR_JSON" | jq -r '.head.ref')
-          SANITIZED=$(bash ./scripts/sanitize-branch.sh "$HEAD_REF")
-          echo "Found PR #$PR_NUMBER from branch $HEAD_REF"
+          SANITIZED=$(bash ./scripts/sanitize-branch.sh "$BRANCH")
+          echo "Branch: $BRANCH -> sanitized: $SANITIZED"
           echo "sanitized=$SANITIZED" >> $GITHUB_OUTPUT
           echo "skip=false" >> $GITHUB_OUTPUT
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Delete dev tags
-        if: steps.pr.outputs.skip != 'true'
+        if: steps.branch.outputs.skip != 'true'
         run: |
-          SANITIZED="${{ steps.pr.outputs.sanitized }}"
+          SANITIZED="${{ steps.branch.outputs.sanitized }}"
           PKGS=$(bash scripts/list-packages.sh)
           for pkg in $PKGS; do
             echo "Cleaning dev tags for $pkg with branch pattern $SANITIZED"

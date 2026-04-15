@@ -14,48 +14,40 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    permissions:
-      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Get merged branch name
-        id: branch
+      - name: Find merged PR targeting develop
+        id: pr
         run: |
-          # Получаем информацию о pull request, который вызвал workflow
-          PR_NUMBER=$(echo '${{ toJson(github.event.workflow_run.pull_requests) }}' | jq -r '.[] | select(.base.ref == "develop") | .number' | head -1)
+          # Ищем среди связанных PR тот, который нацелен в develop и смержен
+          PR_NUMBER=$(echo '${{ toJson(github.event.workflow_run.pull_requests) }}' | jq -r '.[] | select(.base.ref == "develop" and .merged == true) | .number' | head -1)
           if [ -z "$PR_NUMBER" ]; then
-            echo "No PR merged into develop associated with this workflow run, skipping."
+            echo "No merged PR targeting develop found, skipping dev tag cleanup."
             echo "skip=true" >> $GITHUB_OUTPUT
             exit 0
           fi
+          echo "number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "skip=false" >> $GITHUB_OUTPUT
 
-          # Получаем данные PR через GitHub API
-          PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER")
+      - name: Get branch name from PR
+        if: steps.pr.outputs.skip != 'true'
+        run: |
+          PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/${{ steps.pr.outputs.number }}")
           HEAD_REF=$(echo "$PR_DATA" | jq -r '.head.ref')
-          MERGED=$(echo "$PR_DATA" | jq -r '.merged')
-
-          if [ "$MERGED" != "true" ]; then
-            echo "PR #$PR_NUMBER was not merged, skipping dev tag cleanup."
-            echo "skip=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
           SANITIZED=$(bash ./scripts/sanitize-branch.sh "$HEAD_REF")
           echo "Branch: $HEAD_REF -> sanitized: $SANITIZED"
           echo "sanitized=$SANITIZED" >> $GITHUB_OUTPUT
-          echo "skip=false" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Delete dev tags
-        if: steps.branch.outputs.skip != 'true'
+        if: steps.pr.outputs.skip != 'true'
         run: |
-          SANITIZED="${{ steps.branch.outputs.sanitized }}"
-          # Удаляем dev-теги во всех пакетах, соответствующие этой ветке
+          SANITIZED="${{ steps.pr.outputs.sanitized }}"
           PKGS=$(bash scripts/list-packages.sh)
           for pkg in $PKGS; do
             echo "Cleaning dev tags for $pkg with branch pattern $SANITIZED"

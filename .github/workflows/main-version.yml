@@ -1,0 +1,136 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  detect:
+    name: Detect Changed Packages
+    uses: ./.github/workflows/detect-changed-packages.yml
+    with:
+      base-ref: ${{ github.event.before }}
+      head-ref: ${{ github.sha }}
+      fallback-branch: main
+
+  release-stable:
+    name: Create Stable Releases
+    needs: detect
+    if: |
+      needs.detect.outputs.packages != '[]' &&
+      !contains(github.event.head_commit.message, 'chore(deps): update')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Build release plan
+        id: plan
+        run: |
+          CHANGED='${{ needs.detect.outputs.packages }}'
+          PLAN=$(bash ./scripts/build-release-plan.sh $(echo "$CHANGED" | jq -r '.[]'))
+          echo "plan=$PLAN" >> $GITHUB_OUTPUT
+          echo "Release plan: $PLAN"
+
+      - name: Execute release plan
+        run: |
+          PLAN='${{ steps.plan.outputs.plan }}'
+          LEVELS=$(echo "$PLAN" | jq -c '.[]')
+
+          declare -A STABLE_VERSIONS
+
+          for level in $LEVELS; do
+            echo "Processing level: $level"
+            PKGS=$(echo "$level" | jq -r '.[]')
+            for pkg in $PKGS; do
+              echo "Releasing stable version for $pkg"
+
+              LAST_BETA=$(git tag -l "${pkg}/v*-beta.*" | sort -V | tail -n1)
+              if [ -z "$LAST_BETA" ]; then
+                echo "No beta tag found for $pkg, skipping stable release."
+                continue
+              fi
+
+              BASE_VERSION="${LAST_BETA#${pkg}/v}"
+              BASE_VERSION="${BASE_VERSION%-beta.*}"
+
+              LAST_STABLE=$(git tag -l "${pkg}/v*" | grep -E "^${pkg}/v[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -n1)
+              if [ -n "$LAST_STABLE" ]; then
+                STABLE_VER="${LAST_STABLE#${pkg}/v}"
+                if [ "$(printf '%s\n' "$STABLE_VER" "$BASE_VERSION" | sort -V | tail -n1)" = "$STABLE_VER" ]; then
+                  echo "Stable version $STABLE_VER is already >= $BASE_VERSION, skipping."
+                  continue
+                fi
+              fi
+
+              TAG="${pkg}/v${BASE_VERSION}"
+              STABLE_VERSIONS[$pkg]="$BASE_VERSION"
+
+              echo "Creating stable tag: $TAG"
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              git tag -a "$TAG" -m "Release $pkg $BASE_VERSION"
+              git push origin "$TAG"
+            done
+
+            UPDATE_ARGS=""
+            for pkg in "${!STABLE_VERSIONS[@]}"; do
+              UPDATE_ARGS="$UPDATE_ARGS $pkg v${STABLE_VERSIONS[$pkg]}"
+            done
+
+            if [ -n "$UPDATE_ARGS" ]; then
+              echo "Updating beta dependencies to stable versions: $UPDATE_ARGS"
+              bash ./scripts/update-deps.sh --mode=stable $UPDATE_ARGS
+              git push origin main
+            fi
+          done
+
+      - name: Generate changelog for each package
+        if: always()
+        run: |
+          for pkg in $(echo '${{ needs.detect.outputs.packages }}' | jq -r '.[]'); do
+            LAST_STABLE=$(git tag -l "${pkg}/v*" | grep -E "^${pkg}/v[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -n2 | head -n1)
+            NEW_STABLE=$(git tag -l "${pkg}/v*" | grep -E "^${pkg}/v[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -n1)
+            if [ -z "$LAST_STABLE" ]; then
+              RANGE="$NEW_STABLE"
+            else
+              RANGE="${LAST_STABLE}..${NEW_STABLE}"
+            fi
+            CHANGELOG=$(git log "$RANGE" --format="- %s (%h)" -- "${pkg}/")
+            echo "CHANGELOG_${pkg}=$CHANGELOG" >> $GITHUB_ENV
+          done
+
+      - name: Create GitHub Releases
+        if: always()
+        run: |
+          for pkg in $(echo '${{ needs.detect.outputs.packages }}' | jq -r '.[]'); do
+            TAG="${pkg}/v${STABLE_VERSIONS[$pkg]}"
+            if git rev-parse "$TAG" >/dev/null 2>&1; then
+              echo "Creating release for $TAG"
+              gh release create "$TAG" \
+                --repo "${{ github.repository }}" \
+                --title "$pkg ${STABLE_VERSIONS[$pkg]}" \
+                --notes "$(echo "${{ env[format('CHANGELOG_{0}', pkg)] }}")" \
+                --target "${{ github.sha }}"
+            else
+              echo "Tag $TAG not found, skipping release"
+            fi
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cleanup beta tags
+        if: always()
+        run: |
+          for pkg in $(echo '${{ needs.detect.outputs.packages }}' | jq -r '.[]'); do
+            bash scripts/cleanup-tags.sh "$pkg" beta
+          done

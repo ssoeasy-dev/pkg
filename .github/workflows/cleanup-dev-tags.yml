@@ -1,0 +1,56 @@
+name: Cleanup Dev Tags
+
+on:
+  workflow_run:
+    workflows: ["Beta Version Management"]
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract branch name from merge commit
+        id: branch
+        run: |
+          HEAD_SHA="${{ github.event.workflow_run.head_sha }}"
+          MSG=$(git log -1 --format=%s "$HEAD_SHA")
+          echo "Commit message: $MSG"
+
+          # Формат GitHub UI: "Merge pull request #XX from owner/branch"
+          BRANCH=$(echo "$MSG" | sed -n 's/.* from [^/]*\/\(.*\)$/\1/p')
+          if [ -z "$BRANCH" ]; then
+            # Формат CLI: "Merge branch 'feature/foo' into develop"
+            BRANCH=$(echo "$MSG" | sed -n "s/.*Merge branch '\\(.*\\)' into .*/\\1/p")
+          fi
+
+          if [ -z "$BRANCH" ]; then
+            echo "Could not determine branch name, skipping dev tag cleanup."
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          SANITIZED=$(bash ./scripts/sanitize-branch.sh "$BRANCH")
+          echo "Branch: $BRANCH -> sanitized: $SANITIZED"
+          echo "sanitized=$SANITIZED" >> $GITHUB_OUTPUT
+          echo "skip=false" >> $GITHUB_OUTPUT
+
+      - name: Delete dev tags
+        if: steps.branch.outputs.skip != 'true'
+        run: |
+          SANITIZED="${{ steps.branch.outputs.sanitized }}"
+          PKGS=$(bash scripts/list-packages.sh)
+          for pkg in $PKGS; do
+            echo "Cleaning dev tags for $pkg with branch pattern $SANITIZED"
+            bash scripts/cleanup-tags.sh "$pkg" dev "$SANITIZED"
+          done

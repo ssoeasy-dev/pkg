@@ -1,0 +1,163 @@
+name: Dev Version Management
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [develop]
+
+jobs:
+  detect:
+    name: Detect Changed Packages
+    uses: ./.github/workflows/detect-changed-packages.yml
+    with:
+      base-ref: ${{ github.event.action == 'synchronize' && github.event.before || github.event.pull_request.base.sha }}
+      head-ref: ${{ github.event.action == 'synchronize' && github.event.after || github.event.pull_request.head.sha }}
+      fallback-branch: main
+
+  create-dev:
+    name: Create Dev Version
+    needs: detect
+    if: |
+      github.event.action != 'closed' &&
+      needs.detect.outputs.packages != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    strategy:
+      matrix:
+        package: ${{ fromJson(needs.detect.outputs.packages) }}
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Compute next base version
+        id: version
+        run: |
+          PKG="${{ matrix.package }}"
+          NEXT_BASE=$(bash ./scripts/next-version.sh "$PKG")
+          echo "next_base=$NEXT_BASE" >> $GITHUB_OUTPUT
+
+      - name: Sanitize branch name
+        id: branch
+        run: |
+          SANITIZED=$(bash ./scripts/sanitize-branch.sh "${{ github.head_ref }}")
+          echo "sanitized=$SANITIZED" >> $GITHUB_OUTPUT
+
+      - name: Determine build number
+        id: build
+        run: |
+          PKG="${{ matrix.package }}"
+          BASE="${{ steps.version.outputs.next_base }}"
+          BRANCH="${{ steps.branch.outputs.sanitized }}"
+
+          PATTERN="${PKG}/v${BASE}-dev-${BRANCH}.[0-9]*"
+          EXISTING=$(git tag -l "$PATTERN" | sort -V | tail -n1)
+
+          if [ -z "$EXISTING" ]; then
+            BUILD=1
+          else
+            LAST_BUILD=$(echo "$EXISTING" | grep -oE '[0-9]+$' || echo "0")
+            BUILD=$((LAST_BUILD + 1))
+          fi
+          echo "build=$BUILD" >> $GITHUB_OUTPUT
+
+      - name: Create dev tag
+        id: tag
+        run: |
+          PKG="${{ matrix.package }}"
+          BASE="${{ steps.version.outputs.next_base }}"
+          BRANCH="${{ steps.branch.outputs.sanitized }}"
+          BUILD="${{ steps.build.outputs.build }}"
+
+          TAG="${PKG}/v${BASE}-dev-${BRANCH}.${BUILD}"
+
+          echo "Creating tag: $TAG"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Dev version for $PKG from branch ${{ github.head_ref }}"
+          git push origin "$TAG"
+
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pkg = '${{ matrix.package }}';
+            const tag = '${{ steps.tag.outputs.tag }}';
+            const version = tag.replace(`${pkg}/`, '');
+
+            const body = `## 📦 Dev version created for \`${pkg}\`
+
+            **Version:** \`${version}\`
+
+            **Usage in Go:**
+            \`\`\`bash
+            go get github.com/${{ github.repository }}/${pkg}@${version}
+            \`\`\`
+
+            **In go.mod:**
+            \`\`\`
+            require github.com/${{ github.repository }}/${pkg} ${version}
+            \`\`\`
+
+            > ⚠️ This is a temporary development version. It will be deleted when this PR is closed.
+            `;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const marker = `Dev version for \`${pkg}\``;
+            const botComment = comments.find(c => c.user.type === 'Bot' && c.body.includes(marker));
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body
+              });
+            }
+
+  cleanup-dev-unmerged:
+    name: Cleanup Dev Tags (unmerged PR)
+    needs: detect
+    if: |
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == false &&
+      needs.detect.outputs.packages != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        package: ${{ fromJson(needs.detect.outputs.packages) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sanitize branch name
+        id: branch
+        run: |
+          SANITIZED=$(bash ./scripts/sanitize-branch.sh "${{ github.head_ref }}")
+          echo "sanitized=$SANITIZED" >> $GITHUB_OUTPUT
+
+      - name: Delete dev tags
+        run: |
+          bash scripts/cleanup-tags.sh "${{ matrix.package }}" dev "${{ steps.branch.outputs.sanitized }}"

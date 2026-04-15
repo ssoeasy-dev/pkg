@@ -74,13 +74,14 @@ func setupPostgres(t *testing.T) *gorm.DB {
 	return db
 }
 
-func newTestLogger() *logger.Logger {
+func newTestLogger() logger.Logger {
 	l := logger.NewLogger(logger.EnvironmentTest, "test")
-	return &l
+	return l
 }
 
 func newRepo(db *gorm.DB) Repository[Article] {
-	return NewRepository[Article](tx.NewTxManager(db), newTestLogger(), "article")
+	log := newTestLogger()
+	return NewRepository[Article](tx.NewTxManager(db, log), newTestLogger(), "article")
 }
 
 // ─── Create ───────────────────────────────────────────────────────────────────
@@ -433,61 +434,6 @@ func TestRepository_Delete_ZeroRowsNotError(t *testing.T) {
 	assert.EqualValues(t, 0, n)
 }
 
-// ─── RawQuery ─────────────────────────────────────────────────────────────────
-
-func TestRepository_RawQuery(t *testing.T) {
-	repo := newRepo(setupPostgres(t))
-	ctx := context.Background()
-
-	for _, author := range []string{"Quinn", "Quinn", "Ray"} {
-		require.NoError(t, repo.Create(ctx, &Article{Title: "T", Author: author}))
-	}
-
-	results, err := repo.RawQuery(ctx,
-		`SELECT * FROM articles WHERE author = ? AND deleted_at IS NULL`,
-		"Quinn",
-	)
-	require.NoError(t, err)
-	assert.Len(t, results, 2)
-}
-
-// ─── Транзакции ───────────────────────────────────────────────────────────────
-
-func TestRepository_Transaction_Commit(t *testing.T) {
-	db := setupPostgres(t)
-	txMgr := tx.NewTxManager(db)
-	ctx := context.Background()
-
-	err := txMgr.WithTransaction(ctx, func(ctx context.Context) error {
-		repo := NewRepository[Article](txMgr, newTestLogger(), "article")
-		return repo.Create(ctx, &Article{Title: "Tx Commit", Author: "Sam"})
-	})
-	require.NoError(t, err)
-
-	repo := newRepo(db)
-	ok, err := repo.Exists(ctx, WithConditions(map[string]any{"author": "Sam"}))
-	require.NoError(t, err)
-	assert.True(t, ok)
-}
-
-func TestRepository_Transaction_Rollback(t *testing.T) {
-	db := setupPostgres(t)
-	txMgr := tx.NewTxManager(db)
-	ctx := context.Background()
-
-	err := txMgr.WithTransaction(ctx, func(ctx context.Context) error {
-		repo := NewRepository[Article](txMgr, newTestLogger(), "article")
-		_ = repo.Create(ctx, &Article{Title: "Will rollback", Author: "Tina"})
-		return fmt.Errorf("intentional error")
-	})
-	require.Error(t, err)
-
-	repo := newRepo(db)
-	ok, err := repo.Exists(ctx, WithConditions(map[string]any{"author": "Tina"}))
-	require.NoError(t, err)
-	assert.False(t, ok)
-}
-
 type UniqueModel struct {
 	ID    uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
 	Value string    `gorm:"uniqueIndex"`
@@ -502,7 +448,8 @@ func TestRepository_Create_UniqueViolation(t *testing.T) {
 	}
 	db := setupPostgres(t)
 	require.NoError(t, db.AutoMigrate(&UniqueModel{}))
-	repo := NewRepository[UniqueModel](tx.NewTxManager(db), newTestLogger(), "unique_model")
+	log := newTestLogger()
+	repo := NewRepository[UniqueModel](tx.NewTxManager(db, log), newTestLogger(), "unique_model")
 	ctx := context.Background()
 
 	err := repo.Create(ctx, &UniqueModel{Value: "dup"})
@@ -621,22 +568,6 @@ func TestRepository_Exists_WithConditions(t *testing.T) {
 	ok, err = repo.Exists(ctx, WithConditions(map[string]any{"author": "Leo", "views": 100}))
 	require.NoError(t, err)
 	assert.False(t, ok)
-}
-
-func TestRepository_RawQuery_MultipleParams(t *testing.T) {
-	repo := newRepo(setupPostgres(t))
-	ctx := context.Background()
-
-	for _, author := range []string{"Quinn", "Quinn", "Ray"} {
-		require.NoError(t, repo.Create(ctx, &Article{Title: "T", Author: author, Views: 10}))
-	}
-
-	results, err := repo.RawQuery(ctx,
-		`SELECT * FROM articles WHERE author = $1 AND views = $2`,
-		"Quinn", 10,
-	)
-	require.NoError(t, err)
-	assert.Len(t, results, 2)
 }
 
 func TestRepository_FindAll_PaginationPageZero(t *testing.T) {

@@ -6,6 +6,10 @@ on:
     types:
       - completed
 
+permissions:
+  actions: read
+  contents: write
+
 jobs:
   cleanup:
     runs-on: ubuntu-latest
@@ -47,25 +51,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get changed packages from workflow run
-        id: packages
-        if: steps.branch.outputs.skip != 'true'
-        run: |
-          # Скачиваем артефакты workflow beta-version (если они есть)
-          # Альтернативно можно получить список изменённых пакетов из базы workflow
-          # Но проще повторно определить изменённые пакеты относительно базы
-          # Для этого используем git diff между базой мержа и HEAD (раз уж мы в checkout)
-          # Но мы не знаем base sha. Проще всего — удалить все dev-теги для этой ветки
-          # во всех пакетах, которые есть в репозитории. Это безопасно.
-          PKGS=$(bash scripts/list-packages.sh --json)
-          echo "packages=$PKGS" >> $GITHUB_OUTPUT
-
       - name: Delete dev tags
         if: steps.branch.outputs.skip != 'true'
         run: |
           SANITIZED="${{ steps.branch.outputs.sanitized }}"
-          PKGS='${{ steps.packages.outputs.packages }}'
-          for pkg in $(echo "$PKGS" | jq -r '.[]'); do
+          # Удаляем dev-теги во всех пакетах, соответствующие этой ветке
+          PKGS=$(bash scripts/list-packages.sh)
+          for pkg in $PKGS; do
             echo "Cleaning dev tags for $pkg with branch pattern $SANITIZED"
             bash scripts/cleanup-tags.sh "$pkg" dev "$SANITIZED"
           done

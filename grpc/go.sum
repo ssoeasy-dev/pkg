@@ -26,12 +26,10 @@ github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH
 github.com/rogpeppe/go-internal v1.9.0/go.mod h1:WtVeX8xhTBvf0smdhujwtBcq4Qrzq/fJaraNFVN+nFs=
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
-github.com/ssoeasy-dev/pkg/errors v1.2.0-dev-refactor-errors.1 h1:8VXNkb9WIAFWWqKHfsyD9uVnJaZU7TIwTHm5N/aA8U0=
-github.com/ssoeasy-dev/pkg/errors v1.2.0-dev-refactor-errors.1/go.mod h1:T/YJ0gK+meb/XmlyUs0fDU3vFpFNIist1KuO82Ta7Xc=
-github.com/ssoeasy-dev/pkg/logger v1.1.0 h1:AO/6JXF1Ra1AtwUSDPQW76MHw1VcmFD5diTL+4KVtVs=
-github.com/ssoeasy-dev/pkg/logger v1.1.0/go.mod h1:QA7Y8u3ZyScm/IECqgpdJRE1iY/z/2Kx9T4HogEm8is=
-github.com/ssoeasy-dev/pkg/logger v1.1.1-dev-refactor-errors.1 h1:01O1yDdkh3RBAkTDGSnBmRMyrcd2kcuPFHqnMS6jd1E=
-github.com/ssoeasy-dev/pkg/logger v1.1.1-dev-refactor-errors.1/go.mod h1:QA7Y8u3ZyScm/IECqgpdJRE1iY/z/2Kx9T4HogEm8is=
+github.com/ssoeasy-dev/pkg/errors v1.2.0-beta.1 h1:nP4tTTZAywTsmnMfWNMb3ND23AnXqWIQiDPHjt2YUws=
+github.com/ssoeasy-dev/pkg/errors v1.2.0-beta.1/go.mod h1:T/YJ0gK+meb/XmlyUs0fDU3vFpFNIist1KuO82Ta7Xc=
+github.com/ssoeasy-dev/pkg/logger v1.1.1-beta.1 h1:7HDcFgYSPs6df6gjdgO/T7a/98v7nnvmjW4YvtZsgO8=
+github.com/ssoeasy-dev/pkg/logger v1.1.1-beta.1/go.mod h1:QA7Y8u3ZyScm/IECqgpdJRE1iY/z/2Kx9T4HogEm8is=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=

@@ -6,8 +6,8 @@ require (
 	github.com/glebarez/sqlite v1.11.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.6.0
-	github.com/ssoeasy-dev/pkg/errors v1.2.0-dev-refactor-errors.1
-	github.com/ssoeasy-dev/pkg/logger v1.1.1-dev-refactor-errors.1
+	github.com/ssoeasy-dev/pkg/errors v1.2.0-beta.1
+	github.com/ssoeasy-dev/pkg/logger v1.1.1-beta.1
 	github.com/stretchr/testify v1.11.1
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1

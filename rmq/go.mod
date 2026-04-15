@@ -4,7 +4,7 @@ go 1.24.1
 
 require (
 	github.com/rabbitmq/amqp091-go v1.10.0
-	github.com/ssoeasy-dev/pkg/logger v1.1.1-dev-refactor-errors.1
+	github.com/ssoeasy-dev/pkg/logger v1.1.1-beta.1
 )
 
 require (

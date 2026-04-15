@@ -4,8 +4,8 @@ go 1.24.11
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/ssoeasy-dev/pkg/errors v1.2.0-dev-refactor-errors.1
-	github.com/ssoeasy-dev/pkg/logger v1.1.1-dev-refactor-errors.1
+	github.com/ssoeasy-dev/pkg/errors v1.2.0-beta.1
+	github.com/ssoeasy-dev/pkg/logger v1.1.1-beta.1
 	google.golang.org/grpc v1.80.0
 )
 

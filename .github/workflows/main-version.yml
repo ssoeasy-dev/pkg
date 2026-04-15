@@ -42,6 +42,7 @@ jobs:
           echo "Release plan: $PLAN"
 
       - name: Execute release plan
+        id: release
         run: |
           PLAN='${{ steps.plan.outputs.plan }}'
           LEVELS=$(echo "$PLAN" | jq -c '.[]')
@@ -94,9 +95,14 @@ jobs:
             fi
           done
 
+          # Сохраняем массив версий в файл для следующих шагов
+          declare -p STABLE_VERSIONS > stable_versions.env
+
       - name: Generate changelog for each package
         if: always()
         run: |
+          source stable_versions.env
+          mkdir -p changelogs
           for pkg in $(echo '${{ needs.detect.outputs.packages }}' | jq -r '.[]'); do
             LAST_STABLE=$(git tag -l "${pkg}/v*" | grep -E "^${pkg}/v[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -n2 | head -n1)
             NEW_STABLE=$(git tag -l "${pkg}/v*" | grep -E "^${pkg}/v[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -n1)
@@ -105,13 +111,13 @@ jobs:
             else
               RANGE="${LAST_STABLE}..${NEW_STABLE}"
             fi
-            CHANGELOG=$(git log "$RANGE" --format="- %s (%h)" -- "${pkg}/")
-            echo "CHANGELOG_${pkg}=$CHANGELOG" >> $GITHUB_ENV
+            git log "$RANGE" --format="- %s (%h)" -- "${pkg}/" > "changelogs/${pkg}.txt"
           done
 
       - name: Create GitHub Releases
         if: always()
         run: |
+          source stable_versions.env
           for pkg in $(echo '${{ needs.detect.outputs.packages }}' | jq -r '.[]'); do
             TAG="${pkg}/v${STABLE_VERSIONS[$pkg]}"
             if git rev-parse "$TAG" >/dev/null 2>&1; then
@@ -119,7 +125,7 @@ jobs:
               gh release create "$TAG" \
                 --repo "${{ github.repository }}" \
                 --title "$pkg ${STABLE_VERSIONS[$pkg]}" \
-                --notes "$(echo "${{ env[format('CHANGELOG_{0}', pkg)] }}")" \
+                --notes-file "changelogs/${pkg}.txt" \
                 --target "${{ github.sha }}"
             else
               echo "Tag $TAG not found, skipping release"

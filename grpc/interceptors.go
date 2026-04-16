@@ -108,11 +108,17 @@ func RecoveryInterceptor(log logger.Logger) grpc.UnaryServerInterceptor {
 func ErrorHandlerInterceptor(log logger.Logger, handler ErrorHandler) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, next grpc.UnaryHandler) (any, error) {
 		resp, err := next(ctx, req)
-		if err != nil && handler != nil {
-			err = errorHandler(ctx, log, err)
+		if err != nil {
+			if _, ok := status.FromError(err); ok {
+				return resp, err
+			}
 			if handler != nil {
 				err = handler(err)
 			}
+			if _, ok := status.FromError(err); ok {
+				return resp, err
+			}
+			err = errorHandler(ctx, log, err)
 		}
 		return resp, err
 	}
@@ -206,11 +212,20 @@ func StreamRecoveryInterceptor(log logger.Logger) grpc.StreamServerInterceptor {
 }
 
 // StreamErrorHandlerInterceptor оборачивает stream RPC и применяет переданный обработчик ошибок.
-func StreamErrorHandlerInterceptor(ctx context.Context, log logger.Logger, handler ErrorHandler) grpc.StreamServerInterceptor {
+func StreamErrorHandlerInterceptor(log logger.Logger, handler ErrorHandler) grpc.StreamServerInterceptor {
 	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, next grpc.StreamHandler) error {
 		err := next(srv, ss)
-		if err != nil && handler != nil {
-			err = errorHandler(ctx, log, err)
+		if err != nil {
+			if _, ok := status.FromError(err); ok {
+				return err
+			}
+			if handler != nil {
+				err = handler(err)
+			}
+			if _, ok := status.FromError(err); ok {
+				return err
+			}
+			err = errorHandler(ss.Context(), log, err)
 			if handler != nil {
 				err = handler(err)
 			}

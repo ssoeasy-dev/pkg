@@ -2,9 +2,9 @@ package db
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/ssoeasy-dev/pkg/logger"
+	"github.com/ssoeasy-dev/pkg/errors"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	gormLogger "gorm.io/gorm/logger"
@@ -28,12 +28,12 @@ func NewDB(cfg *Config, log logger.Logger) (*DB, error) {
 		Logger: gormLogger.Default.LogMode(logLevel),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to database: %w", err)
+		return nil, errors.NewWrap(errors.ErrInternal, err, "failed to connect to database")
 	}
 
 	sqlDB, err := conn.DB()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get database instance: %w", err)
+		return nil, errors.NewWrap(errors.ErrInternal, err, "failed to get database instance")
 	}
 
 	sqlDB.SetMaxIdleConns(cfg.MaxIdleConnsOrDefault())
@@ -53,10 +53,10 @@ func NewDB(cfg *Config, log logger.Logger) (*DB, error) {
 func (d *DB) Ping() error {
 	sqlDB, err := d.Conn.DB()
 	if err != nil {
-		return fmt.Errorf("failed to get database instance: %w", err)
+		return errors.NewWrap(errors.ErrInternal, err, "failed to get database instance")
 	}
 	if err := sqlDB.Ping(); err != nil {
-		return fmt.Errorf("failed to ping database: %w", err)
+		return errors.NewWrap(errors.ErrInternal, err, "failed to ping database")
 	}
 	return nil
 }
@@ -65,7 +65,10 @@ func (d *DB) Ping() error {
 func (d *DB) Close() error {
 	sqlDB, err := d.Conn.DB()
 	if err != nil {
-		return err
+		return errors.NewWrap(errors.ErrInternal, err, "failed to get database instance for closing")
 	}
-	return sqlDB.Close()
+	if err := sqlDB.Close(); err != nil {
+		return errors.NewWrap(errors.ErrInternal, err, "failed to close database connection")
+	}
+	return nil
 }

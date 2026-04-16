@@ -1,0 +1,93 @@
+name: Beta Version Management
+
+on:
+  push:
+    branches: [develop]
+
+concurrency:
+  group: beta-version-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    name: Detect Changed Packages
+    uses: ./.github/workflows/detect-changed-packages.yml
+    with:
+      base-ref: ${{ github.event.before }}
+      head-ref: ${{ github.sha }}
+      fallback-branch: develop
+
+  release-beta:
+    name: Release Beta Versions
+    needs: detect
+    if: |
+      needs.detect.outputs.packages != '[]' &&
+      !contains(github.event.head_commit.message, 'chore(deps): update')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Build release plan
+        id: plan
+        run: |
+          CHANGED='${{ needs.detect.outputs.packages }}'
+          mapfile -t pkgs < <(echo "$CHANGED" | jq -r '.[]')
+          PLAN=$(bash ./scripts/build-release-plan.sh "${pkgs[@]}")
+          echo "plan=$PLAN" >> "$GITHUB_OUTPUT"
+          echo "Release plan: $PLAN"
+
+      - name: Execute release plan
+        run: |
+          PLAN='${{ steps.plan.outputs.plan }}'
+          LEVELS=$(echo "$PLAN" | jq -c '.[]')
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          declare -A BETA_VERSIONS
+
+          for level in $LEVELS; do
+            echo "Processing level: $level"
+            PKGS=$(echo "$level" | jq -r '.[]')
+            for pkg in $PKGS; do
+              echo "Releasing beta for $pkg"
+
+              NEXT_BASE=$(bash ./scripts/next-version.sh "$pkg")
+              LAST_BETA=$(git tag -l "${pkg}/v${NEXT_BASE}-beta.*" | sort -V | tail -n1)
+              if [ -z "$LAST_BETA" ]; then
+                BUILD=1
+              else
+                LAST_BUILD=$(echo "$LAST_BETA" | grep -oE '[0-9]+$' || echo "0")
+                BUILD=$((LAST_BUILD + 1))
+              fi
+              VERSION="${NEXT_BASE}-beta.${BUILD}"
+              TAG="${pkg}/v${VERSION}"
+              BETA_VERSIONS[$pkg]="$VERSION"
+
+              echo "Creating beta tag: $TAG"
+              git tag -a "$TAG" -m "Beta version for $pkg"
+              git push origin "$TAG"
+            done
+
+            UPDATE_ARGS=""
+            for pkg in "${!BETA_VERSIONS[@]}"; do
+              UPDATE_ARGS="$UPDATE_ARGS $pkg v${BETA_VERSIONS[$pkg]}"
+            done
+
+            if [ -n "$UPDATE_ARGS" ]; then
+              echo "Updating dev dependencies to beta versions: $UPDATE_ARGS"
+              bash ./scripts/update-deps.sh --mode=beta $UPDATE_ARGS
+              git push origin develop
+            fi
+          done

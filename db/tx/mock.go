@@ -100,14 +100,14 @@ func (m *MockTxManager) WithTransactionalRollback(ctx context.Context, returnErr
 }
 
 // WithTransactionErrBegin настраивает mock так, чтобы WithTransaction вернул
-// ErrTxBegin, не вызывая fn.
+// ErrInternal, не вызывая fn.
 func (m *MockTxManager) WithTransactionErrBegin(ctx context.Context) {
 	m.On("WithTransaction", ctx, mock.AnythingOfType("func(context.Context) error")).
-		Return(errors.ErrTxBegin)
+		Return(errors.ErrInternal)
 }
 
 // WithTransactionErrCommit настраивает mock так, чтобы fn был вызван,
-// а WithTransaction вернул ErrTxCommit.
+// а WithTransaction вернул ErrInternal.
 func (m *MockTxManager) WithTransactionErrCommit(ctx context.Context) {
 	m.On("WithTransaction", ctx, mock.AnythingOfType("func(context.Context) error")).
 		Run(func(args mock.Arguments) {
@@ -118,11 +118,11 @@ func (m *MockTxManager) WithTransactionErrCommit(ctx context.Context) {
 				})
 			}
 		}).
-		Return(errors.ErrTxCommit)
+		Return(errors.ErrInternal)
 }
 
 // WithTransactionErrRollback настраивает mock так, чтобы fn был вызван,
-// а WithTransaction вернул ErrTxRollback.
+// а WithTransaction вернул ErrInternal.
 func (m *MockTxManager) WithTransactionErrRollback(ctx context.Context) {
 	m.On("WithTransaction", ctx, mock.AnythingOfType("func(context.Context) error")).
 		Run(func(args mock.Arguments) {
@@ -133,5 +133,5 @@ func (m *MockTxManager) WithTransactionErrRollback(ctx context.Context) {
 				})
 			}
 		}).
-		Return(errors.ErrTxRollback)
+		Return(errors.ErrInternal)
 }

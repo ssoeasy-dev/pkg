@@ -13,73 +13,62 @@ func errorHandler(ctx context.Context, log logger.Logger, err error) error {
 	if err == nil {
 		return nil
 	}
-
-	logError := errors.Unwrap(err)
-	grpcErrStr := err.Error()
-	var code codes.Code
-
-	switch {
-	// repository errors 10
-	// 1 --- CANCELLED ---
-	case errors.Is(err, errors.ErrCanceled):
-		code = codes.Canceled
-	// 2 --- UNKNOWN ---
-	case errors.Is(err, errors.ErrUnknown):
-		code = codes.Unknown
-	// 3 --- INVALID_ARGUMENT ---
-	case errors.Is(err, errors.ErrCheckViolation),
-	errors.Is(err, errors.ErrNotNullViolation),
-	errors.Is(err, errors.ErrInvalidArgument):
-		code = codes.InvalidArgument
-	case errors.Is(err, errors.ErrValidation): // TODO: build validation error from github.com/go-playground/validator
-		code = codes.InvalidArgument
-	// 4 --- DEADLINE_EXCEEDED ---
-	case errors.Is(err, errors.ErrDeadlineExceeded):
-		code = codes.DeadlineExceeded
-	// 5 --- NOT_FOUND ---
-	case errors.Is(err, errors.ErrNotFound):
-		code = codes.NotFound
-	// 6 --- ALREADY_EXISTS ---
-	case errors.Is(err, errors.ErrAlreadyExists):
-		code = codes.AlreadyExists
-	// 7 --- PERMISSION_DENIED ---
-	case errors.Is(err, errors.ErrPermissionDenied):
-		code = codes.PermissionDenied
-	// 8 --- RESOURCE_EXHAUSTED ---
-	case errors.Is(err, errors.ErrResourceExhausted):
-		code = codes.ResourceExhausted
-	// 9 --- FAILED_PRECONDITION ---
-	case errors.Is(err, errors.ErrForeignKey),
-	errors.Is(err, errors.ErrLockTimeout):
-		code = codes.FailedPrecondition
-	// 10 --- ABORTED ---
-	case errors.Is(err, errors.ErrDeadlock):
-		code = codes.Aborted
-	// 11 --- OUT_OF_RANGE ---
-	// 12 --- UNIMPLEMENTED ---
-	// 13 --- INTERNAL ---
-	case errors.Is(err, errors.ErrCreationFailed),
-	errors.Is(err, errors.ErrUpdateFailed),
-	errors.Is(err, errors.ErrDeleteFailed),
-	errors.Is(err, errors.ErrGetFailed),
-	errors.Is(err, errors.ErrTxBegin),
-	errors.Is(err, errors.ErrTxCommit),
-	errors.Is(err, errors.ErrTxRollback):
-		code = codes.Internal
-	// 14 --- UNAVAILABLE ---
-	case errors.Is(err, errors.ErrUnavailable):
-		code = codes.Unavailable
-	// 15 --- DATA_LOSS ---
-	// 16 --- UNAUTHENTICATED ---
-	case errors.Is(err, errors.ErrUnauthenticated):
-		code = codes.Unauthenticated
-	default:
-		code = codes.Internal
+	
+	log.Error(ctx, errors.FullError(err), nil)
+	
+	if IsGRPCStatus(err) {
+		return err
 	}
-
-	if logError != nil {
-		log.Error(ctx, logError.Error(), nil)
-	}
-
-	return status.Error(code, grpcErrStr)
+	code := mapKindToGRPCCode(errors.Kind(err))
+	
+	return status.Error(code, err.Error())
 }
+
+// IsGRPCStatus проверяет, является ли ошибка gRPC-статусом.
+func IsGRPCStatus(err error) bool {
+	_, ok := status.FromError(err)
+	return ok
+}
+
+// mapKindToGRPCCode отображает вид ошибки в gRPC-код.
+// Если вид не распознан, возвращается codes.Internal.
+func mapKindToGRPCCode(kind error) codes.Code {
+	switch kind {
+	case errors.ErrCanceled:
+		return codes.Canceled
+	case errors.ErrUnknown:
+		return codes.Unknown
+	case errors.ErrInvalidArgument, errors.ErrNotAcceptable, errors.ErrUnprocessableEntity, errors.ErrURITooLong, errors.ErrUnsupportedMediaType, errors.ErrRequestHeaderFieldsTooLarge:
+		return codes.InvalidArgument
+	case errors.ErrDeadlineExceeded, errors.ErrRequestTimeout, errors.ErrGatewayTimeout:
+		return codes.DeadlineExceeded
+	case errors.ErrNotFound, errors.ErrGone:
+		return codes.NotFound
+	case errors.ErrAlreadyExists:
+		return codes.AlreadyExists
+	case errors.ErrPermissionDenied, errors.ErrPaymentRequired, errors.ErrUnavailableForLegalReasons:
+		return codes.PermissionDenied
+	case errors.ErrResourceExhausted, errors.ErrPayloadTooLarge, errors.ErrTooManyRequests, errors.ErrInsufficientStorage:
+		return codes.ResourceExhausted
+	case errors.ErrFailedPrecondition, errors.ErrExpectationFailed, errors.ErrLocked, errors.ErrFailedDependency, errors.ErrPreconditionRequired:
+		return codes.FailedPrecondition
+	case errors.ErrAborted, errors.ErrConflict:
+		return codes.Aborted
+	case errors.ErrUnimplemented, errors.ErrMethodNotAllowed, errors.ErrUpgradeRequired, errors.ErrHTTPVersionNotSupported, errors.ErrNotExtended:
+		return codes.Unimplemented
+	case errors.ErrInternal, errors.ErrVariantAlsoNegotiates, errors.ErrLoopDetected:
+		return codes.Internal
+	case errors.ErrUnavailable, errors.ErrTooEarly, errors.ErrBadGateway:
+		return codes.Unavailable
+	case errors.ErrDataLoss:
+		return codes.DataLoss
+	case errors.ErrUnauthenticated, errors.ErrNetworkAuthenticationRequired:
+		return codes.Unauthenticated
+	case errors.ErrRangeNotSatisfiable:
+		return codes.OutOfRange
+	default:
+		return codes.Internal
+	}
+}
+
+

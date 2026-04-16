@@ -3,18 +3,30 @@ name: Test
 on:
   push:
     branches: ["*"]
+  pull_request:
+    branches: [develop, main]
+
 permissions:
   contents: read
   packages: read
 
 jobs:
+  detect:
+    name: Detect changed packages
+    uses: ./.github/workflows/detect-changed-packages.yml
+    with:
+      base-ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+      head-ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.after || github.sha }}
+      fallback-branch: ${{ github.event_name == 'pull_request' && github.base_ref || github.ref_name }}
+
   test:
+    needs: detect
+    if: needs.detect.outputs.packages != '[]'
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        package: [db, logger, grpc, rmq, s3, errors]
+        package: ${{ fromJson(needs.detect.outputs.packages) }}
         go-version: [1.24.1]
-
     steps:
       - uses: actions/checkout@v4
         with:

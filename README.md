@@ -37,10 +37,7 @@ pkg/
     ├── error_test.go
     ├── error.go
     ├── go.mod
-    ├── kind.go
-    ├── README.md
-    ├── verbose_error_test.go
-    └── verbose_error.go
+    └── kind.go
 ```
 
 ## Установка
@@ -62,48 +59,86 @@ go get github.com/ssoeasy-dev/pkg/errors@latest
 go get github.com/ssoeasy-dev/pkg/db@v1.0.10
 ```
 
-## Релизы
+## Управление версиями
 
-Релизы выполняются автоматически при мерже в `main` через GitHub Actions.
+Репозиторий использует полностью автоматизированный процесс выпуска версий на основе Git-тегов и GitHub Actions. Поддерживаются три вида версий:
 
-**Версионирование следует [Semantic Versioning](https://semver.org/) и управляется через commit messages:**
+- **dev** — временные версии для тестирования в Pull Request (PR)
+- **beta** — предрелизные версии, создаваемые при мерже в `develop`
+- **stable** — стабильные релизы, выпускаемые при мерже в `main`
 
-| Prefix в сообщении коммита | Тип бампа | Пример                                 |
-| -------------------------- | --------- | -------------------------------------- |
-| `BREAKING` / `major:`      | major     | `BREAKING: remove Repository.RawQuery` |
-| `feat:` / `minor:`         | minor     | `feat(db): add WithClauses option`     |
-| всё остальное              | patch     | `fix(rmq): handle nil headers`         |
+### Жизненный цикл версий
 
-При мерже CI автоматически:
+1. **Открытие PR в `develop`**
+   - Workflow `dev-version.yml` определяет изменённые пакеты.
+   - Для каждого создаётся dev-тег вида `<pkg>/v<semver>-dev-<sanitized-branch>.<build>`.
+   - В комментарий к PR добавляется инструкция по использованию dev-версии.
 
-1. Определяет, какие пакеты затронуты (по diff)
-2. Вычитывает commit messages и определяет тип бампа
-3. Прогоняет тесты
-4. Создаёт git-тег вида `<package>/vX.Y.Z`
-5. Публикует GitHub Release с changelog
+2. **Обновление PR (новые коммиты)**
+   - Workflow повторно запускается на событие `synchronize` и создаёт новые dev-теги **только для пакетов, изменённых в новых коммитах**.
+   - Номер сборки инкрементируется.
+
+3. **Мерж PR в `develop`**
+   - Workflow `beta-version.yml` строит граф зависимостей между изменёнными пакетами (на основе `go.mod`).
+   - Последовательно, по уровням, создаются beta-теги `<pkg>/v<semver>-beta.<N>`.
+   - После создания каждого уровня происходит обновление `go.mod` во всех модулях: dev-версии заменяются на свежие beta.
+   - По завершении всех уровней отдельный workflow `cleanup-dev-tags.yml` удаляет dev-теги, относящиеся к смерженной ветке.
+
+4. **Мерж `develop` в `main`**
+   - Workflow `main-version.yml` аналогично строит граф и выпускает стабильные версии `<pkg>/v<semver>`.
+   - После создания стабильных тегов обновляются `go.mod`: beta-версии заменяются на стабильные.
+   - Создаются GitHub Releases с автоматически сгенерированным changelog.
+   - Beta-теги для всех изменённых пакетов удаляются.
+
+### Вычисление следующей версии (SemVer)
+
+Базовая версия определяется скриптом `scripts/next-version.sh` на основе анализа коммитов после последнего стабильного тега:
+
+| Тип коммита (префикс)               | Увеличение части |
+| ----------------------------------- | ---------------- |
+| `major(pkg):` или `BREAKING CHANGE` | major            |
+| `feat(pkg):` или `minor(pkg):`      | minor            |
+| `fix(pkg):` или любые другие        | patch            |
+
+### Динамический граф зависимостей
+
+Скрипт `scripts/build-release-plan.sh` парсит все `go.mod` в репозитории и строит направленный граф зависимостей между пакетами. На его основе формируется топологический порядок выпуска версий — независимые пакеты (например, `errors`, `logger`) выпускаются раньше, чем зависящие от них (`db`, `grpc`, `s3`). Это гарантирует, что в момент обновления `go.mod` все требуемые beta- или stable-теги уже существуют.
+
+### Автоматическая очистка временных тегов
+
+- **dev-теги** удаляются workflow `cleanup-dev-tags.yml` после успешного выпуска beta-версий для смерженной ветки. Ветка извлекается из сообщения merge-коммита (поддерживаются стандартные форматы GitHub UI и CLI).
+- **beta-теги** удаляются в `main-version.yml` после выпуска стабильных версий.
+
+Такая архитектура предотвращает накопление мусорных тегов и исключает состояния гонки при обновлении зависимостей.
 
 ## Разработка
 
 ### Зависимости для разработки
 
 ```bash
+
 # Go 1.24+
+
 go version
 
 # golangci-lint
+
 curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
-  | sh -s -- -b $(go env GOPATH)/bin v2.4.0
+ | sh -s -- -b $(go env GOPATH)/bin v2.4.0
 ```
 
 ### Тесты
 
 ```bash
+
 # Один пакет
+
 cd db && go test -v -race ./...
 
 # Все пакеты
-for pkg in db logger grpc rmq s3; do
-  echo "=== $pkg ===" && cd $pkg && go test -race ./... && cd ..
+
+for pkg in $(bash scripts/list-packages.sh); do
+  echo "=== $pkg ===" && cd "$pkg" && go test -race ./... && cd ..
 done
 ```
 
@@ -129,15 +164,17 @@ replace github.com/ssoeasy-dev/pkg/db => ../pkg/db
 
 ```bash
 go get github.com/ssoeasy-dev/pkg/db@<commit-hash>
+
 # go.mod получит псевдо-версию: v1.0.11-0.20260320143021-abc1234f8b9a
+
 ```
 
 ### Добавление нового пакета
 
 1. Создать директорию `pkg/<name>/`
 2. Инициализировать модуль: `go mod init github.com/ssoeasy-dev/pkg/<name>`
-3. Добавить пакет в матрицу CI: `.github/workflows/lint.yml`, `.github/workflows/test.yml`
-4. Добавить в список `ALL_PACKAGES` в `.github/workflows/release.yml`
+3. Добавить зависимости (при необходимости)
+4. Workflows автоматически обнаружат новый пакет через `scripts/list-packages.sh` и включат его в матрицы тестирования и релизов.
 
 ## Лицензия
 

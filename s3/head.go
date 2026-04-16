@@ -22,9 +22,9 @@ func (c *Client) Head(ctx context.Context, key string) (*ObjectMetadata, error) 
 	if err != nil {
 		var apiErr smithy.APIError
 		if errors.As(err, &apiErr) && apiErr.ErrorCode() == "NotFound" {
-			return nil, errors.New(errors.ErrNotFound, "object %q not found", key)
+			return nil, errors.NewWrapf(errors.ErrNotFound, err, "object %q not found", key)
 		}
-		return nil, errors.New(errors.ErrGetFailed, "failed to head object %q: %v", key, err)
+		return nil, errors.NewWrapf(errors.ErrInternal, err, "failed to head object %q", key)
 	}
 
 	return &ObjectMetadata{

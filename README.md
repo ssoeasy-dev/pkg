@@ -137,8 +137,8 @@ cd db && go test -v -race ./...
 
 # Все пакеты
 
-for pkg in db logger grpc rmq s3 errors; do
-echo "=== $pkg ===" && cd $pkg && go test -race ./... && cd ..
+for pkg in $(bash scripts/list-packages.sh); do
+  echo "=== $pkg ===" && cd "$pkg" && go test -race ./... && cd ..
 done
 ```
 

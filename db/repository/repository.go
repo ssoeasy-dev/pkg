@@ -66,22 +66,22 @@ func (r *repository[Model]) Create(ctx context.Context, value *Model, opts ...Re
 	if value == nil {
 		return errors.Newf(errors.ErrInvalidArgument, "%s not provided", r.EntityName)
 	}
-	DB := r.DB(ctx)
+	dbConn := r.DB(ctx)
 	for _, opt := range opts {
-		DB = opt(DB)
+		dbConn = opt(dbConn)
 	}
-	if err := DB.Create(value).Error; err != nil {
+	if err := dbConn.Create(value).Error; err != nil {
 		return db.NewError(err, r.EntityName)
 	}
 	return nil
 }
 
 func (r *repository[Model]) Update(ctx context.Context, value map[string]any, opts ...RepositoryOption) (int64, error) {
-	DB := r.DB(ctx)
+	dbConn := r.DB(ctx)
 	for _, opt := range opts {
-		DB = opt(DB)
+		dbConn = opt(dbConn)
 	}
-	result := DB.Updates(value)
+	result := dbConn.Updates(value)
 	if result.Error != nil {
 		return 0, db.NewError(result.Error, r.EntityName)
 	}
@@ -89,14 +89,14 @@ func (r *repository[Model]) Update(ctx context.Context, value map[string]any, op
 }
 
 func (r *repository[Model]) Delete(ctx context.Context, force bool, opts ...RepositoryOption) (int64, error) {
-	DB := r.DB(ctx)
+	dbConn := r.DB(ctx)
 	for _, opt := range opts {
-		DB = opt(DB)
+		dbConn = opt(dbConn)
 	}
 	if force {
-		DB = DB.Unscoped()
+		dbConn = dbConn.Unscoped()
 	}
-	result := DB.Delete(new(Model))
+	result := dbConn.Delete(new(Model))
 	if result.Error != nil {
 		return 0, db.NewError(result.Error, r.EntityName)
 	}
@@ -104,37 +104,37 @@ func (r *repository[Model]) Delete(ctx context.Context, force bool, opts ...Repo
 }
 
 func (r *repository[Model]) FindOne(ctx context.Context, opts ...RepositoryOption) (*Model, error) {
-	DB := r.DB(ctx)
+	dbConn := r.DB(ctx)
 	for _, opt := range opts {
-		DB = opt(DB)
+		dbConn = opt(dbConn)
 	}
 	var model Model
 	// Take вместо First: не добавляет неявный ORDER BY primary_key.
-	if err := DB.Take(&model).Error; err != nil {
+	if err := dbConn.Take(&model).Error; err != nil {
 		return nil, db.NewError(err, r.EntityName)
 	}
 	return &model, nil
 }
 
 func (r *repository[Model]) FindAll(ctx context.Context, opts ...RepositoryOption) ([]Model, error) {
-	DB := r.DB(ctx)
+	dbConn := r.DB(ctx)
 	for _, opt := range opts {
-		DB = opt(DB)
+		dbConn = opt(dbConn)
 	}
 	var models []Model
-	if err := DB.Find(&models).Error; err != nil {
+	if err := dbConn.Find(&models).Error; err != nil {
 		return nil, db.NewError(err, r.EntityName)
 	}
 	return models, nil
 }
 
 func (r *repository[Model]) Count(ctx context.Context, opts ...RepositoryOption) (int64, error) {
-	DB := r.DB(ctx)
+	dbConn := r.DB(ctx)
 	for _, opt := range opts {
-		DB = opt(DB)
+		dbConn = opt(dbConn)
 	}
 	var count int64
-	if err := DB.Count(&count).Error; err != nil {
+	if err := dbConn.Count(&count).Error; err != nil {
 		return 0, db.NewError(err, r.EntityName)
 	}
 	return count, nil

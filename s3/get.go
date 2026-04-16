@@ -40,7 +40,7 @@ func (c *Client) Get(ctx context.Context, key string, rangeHeader *string) (io.R
 		if errors.As(err, &apiErr) && apiErr.ErrorCode() == "NoSuchKey" {
 			return nil, nil, errors.NewWrapf(errors.ErrNotFound, err, "object %q not found", key)
 		}
-		return nil, nil, errors.NewWrapf(errors.ErrInternal, err, "failed to get object %q: %v", key, err)
+		return nil, nil, errors.NewWrapf(errors.ErrInternal, err, "failed to get object %q", key)
 	}
 
 	meta := &ObjectMetadata{

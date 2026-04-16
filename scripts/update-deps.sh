@@ -37,7 +37,7 @@ go env -w GOPRIVATE=github.com/ssoeasy-dev/*
 go env -w GONOPROXY=github.com/ssoeasy-dev/*
 go env -w GONOSUMDB=github.com/ssoeasy-dev/*
 
-ALL_PKGS=($(bash scripts/list-packages.sh))
+mapfile -t ALL_PKGS < <(bash scripts/list-packages.sh)
 PREFIX="github.com/ssoeasy-dev/pkg/"
 
 update_pkg() {

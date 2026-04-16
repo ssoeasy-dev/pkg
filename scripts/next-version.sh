@@ -22,13 +22,16 @@ if [ -z "$COMMITS" ]; then
   exit 0
 fi
 
+# Экранируем специальные символы в имени пакета для безопасного использования в regex
+ESC_PKG=$(printf '%s' "$PKG" | sed 's/[.[\*^$()+?{|]/\\&/g')
+
 # Определяем тип bump
 BUMP_TYPE="patch"
-if echo "$COMMITS" | grep -qiE "major\(${PKG}\)|BREAKING CHANGE"; then
+if echo "$COMMITS" | grep -qiE "major\(${ESC_PKG}\)|BREAKING CHANGE"; then
   BUMP_TYPE="major"
-elif echo "$COMMITS" | grep -qiE "(feat|minor)\(${PKG}\)"; then
+elif echo "$COMMITS" | grep -qiE "(feat|minor)\(${ESC_PKG}\)"; then
   BUMP_TYPE="minor"
-elif echo "$COMMITS" | grep -qi "fix(${PKG})"; then
+elif echo "$COMMITS" | grep -qiE "fix\(${ESC_PKG}\)"; then
   BUMP_TYPE="patch"
 fi
 

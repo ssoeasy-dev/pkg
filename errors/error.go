@@ -189,6 +189,9 @@ func Unwrap(err error) error {
 // FullError возвращает полную строку ошибки с техническими деталями.
 // Используйте только для логирования.
 func FullError(err error) string {
+	if err == nil {
+		return ""
+	}
 	if e, ok := err.(*Error); ok {
 		return e.FullError()
 	}

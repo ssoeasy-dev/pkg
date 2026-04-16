@@ -3,29 +3,29 @@ name: Lint
 on:
   push:
     branches: ["*"]
+  pull_request:
+    branches: [develop, main]
+
 permissions:
   contents: read
   packages: read
 
 jobs:
-  list-packages:
-    runs-on: ubuntu-latest
-    outputs:
-      packages: ${{ steps.list.outputs.packages }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: List all packages
-        id: list
-        run: |
-          PKGS=$(bash scripts/list-packages.sh --json)
-          echo "packages=$PKGS" >> "$GITHUB_OUTPUT"
+  detect:
+    name: Detect changed packages
+    uses: ./.github/workflows/detect-changed-packages.yml
+    with:
+      base-ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+      head-ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.after || github.sha }}
+      fallback-branch: ${{ github.event_name == 'pull_request' && github.base_ref || github.ref_name }}
 
   lint:
-    needs: list-packages
+    needs: detect
+    if: needs.detect.outputs.packages != '[]'
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        package: ${{ fromJson(needs.list-packages.outputs.packages) }}
+        package: ${{ fromJson(needs.detect.outputs.packages) }}
         go-version: [1.24.1]
     steps:
       - name: Checkout

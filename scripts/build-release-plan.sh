@@ -11,7 +11,7 @@ CHANGED_PKGS=("$@")
 PREFIX="github.com/ssoeasy-dev/pkg/"
 
 # Получаем список всех пакетов через отдельный скрипт
-ALL_PKGS=($(bash scripts/list-packages.sh))
+mapfile -t ALL_PKGS < <(bash scripts/list-packages.sh)
 
 # Фильтруем изменённые пакеты
 declare -A is_changed
@@ -26,9 +26,9 @@ declare -A deps indegree adj
 
 for pkg in "${ALL_PKGS[@]}"; do
     modfile="${pkg}/go.mod"
-    internal_deps=$(grep -E "^[[:space:]]*${PREFIX}" "$modfile" | \
-                    sed -E "s|.*${PREFIX}([^[:space:]]+).*|\1|" | \
-                    sort -u)
+    internal_deps=$(sed -n '/^require/,/^)/p' "$modfile" | \
+            grep -oE "${PREFIX}[^[:space:]]*" | \
+            sed "s|${PREFIX}||" | sort -u)
     deps[$pkg]="$internal_deps"
 done
 

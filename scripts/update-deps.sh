@@ -91,7 +91,7 @@ fi
 for mod in "${ALL_PKGS[@]}"; do
     if [[ -f "${mod}/go.mod" ]]; then
         echo "  Полная очистка и обновление $mod"
-        (cd "$mod" && rm -f go.sum && go clean -modcache && go mod tidy)
+        (cd "$mod" && rm -f go.sum && go mod tidy)
         git add "${mod}/go.mod" "${mod}/go.sum" 2>/dev/null || true
     fi
 done

@@ -12,7 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	goGrpc "google.golang.org/grpc"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -88,8 +88,8 @@ func TestServer_HealthCheck_ReturnsServing(t *testing.T) {
 	grpc_health_v1.RegisterHealthServer(srv.GetGRPCServer(), health.NewServer())
 	startServer(t, srv)
 
-	conn, err := goGrpc.NewClient(addr,
-		goGrpc.WithTransportCredentials(insecure.NewCredentials()),
+	conn, err := grpc.NewClient(addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { conn.Close() })
@@ -113,8 +113,8 @@ func TestServer_InterceptorsPropagateMetadata(t *testing.T) {
 	grpc_health_v1.RegisterHealthServer(srv.GetGRPCServer(), health.NewServer())
 	startServer(t, srv)
 
-	conn, err := goGrpc.NewClient(addr,
-		goGrpc.WithTransportCredentials(insecure.NewCredentials()),
+	conn, err := grpc.NewClient(addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { conn.Close() })

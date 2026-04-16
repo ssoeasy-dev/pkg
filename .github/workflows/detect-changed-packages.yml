@@ -37,13 +37,13 @@ jobs:
             git fetch origin "$FALLBACK" --depth=1 || true
             BASE=$(git merge-base "origin/$FALLBACK" "$HEAD" 2>/dev/null || echo "origin/$FALLBACK")
           fi
-          echo "base=$BASE" >> $GITHUB_OUTPUT
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
 
       - name: List all packages
         id: list
         run: |
           ALL_PKGS=$(bash scripts/list-packages.sh --json)
-          echo "all=$ALL_PKGS" >> $GITHUB_OUTPUT
+          echo "all=$ALL_PKGS" >> "$GITHUB_OUTPUT"
 
       - name: Detect changed packages
         id: changed
@@ -64,4 +64,4 @@ jobs:
           else
             JSON=$(printf '%s\n' "${CHANGED[@]}" | jq -R . | jq -s -c .)
           fi
-          echo "packages=$JSON" >> $GITHUB_OUTPUT
+          echo "packages=$JSON" >> "$GITHUB_OUTPUT"

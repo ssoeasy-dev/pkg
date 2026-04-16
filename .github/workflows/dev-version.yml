@@ -12,7 +12,7 @@ jobs:
     with:
       base-ref: ${{ github.event.action == 'synchronize' && github.event.before || github.event.pull_request.base.sha }}
       head-ref: ${{ github.event.action == 'synchronize' && github.event.after || github.event.pull_request.head.sha }}
-      fallback-branch: main
+      fallback-branch: develop
 
   create-dev:
     name: Create Dev Version
@@ -39,13 +39,15 @@ jobs:
         run: |
           PKG="${{ matrix.package }}"
           NEXT_BASE=$(bash ./scripts/next-version.sh "$PKG")
-          echo "next_base=$NEXT_BASE" >> $GITHUB_OUTPUT
+          echo "next_base=$NEXT_BASE" >> "$GITHUB_OUTPUT"
 
       - name: Sanitize branch name
         id: branch
+        env:
+          PR_BRANCH: ${{ github.head_ref }}
         run: |
-          SANITIZED=$(bash ./scripts/sanitize-branch.sh "${{ github.head_ref }}")
-          echo "sanitized=$SANITIZED" >> $GITHUB_OUTPUT
+          SANITIZED=$(bash ./scripts/sanitize-branch.sh "$PR_BRANCH")
+          echo "sanitized=$SANITIZED" >> "$GITHUB_OUTPUT"
 
       - name: Determine build number
         id: build
@@ -63,7 +65,7 @@ jobs:
             LAST_BUILD=$(echo "$EXISTING" | grep -oE '[0-9]+$' || echo "0")
             BUILD=$((LAST_BUILD + 1))
           fi
-          echo "build=$BUILD" >> $GITHUB_OUTPUT
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
 
       - name: Create dev tag
         id: tag
@@ -81,7 +83,7 @@ jobs:
           git tag -a "$TAG" -m "Dev version for $PKG from branch ${{ github.head_ref }}"
           git push origin "$TAG"
 
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Comment on PR
         uses: actions/github-script@v7
@@ -154,9 +156,11 @@ jobs:
 
       - name: Sanitize branch name
         id: branch
+        env:
+          PR_BRANCH: ${{ github.head_ref }}
         run: |
-          SANITIZED=$(bash ./scripts/sanitize-branch.sh "${{ github.head_ref }}")
-          echo "sanitized=$SANITIZED" >> $GITHUB_OUTPUT
+          SANITIZED=$(bash ./scripts/sanitize-branch.sh "$PR_BRANCH")
+          echo "sanitized=$SANITIZED" >> "$GITHUB_OUTPUT"
 
       - name: Delete dev tags
         run: |

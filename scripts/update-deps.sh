@@ -67,16 +67,24 @@ update_pkg() {
 if [[ "$MODE" == "beta" ]]; then
     echo "=== Режим beta: замена ВСЕХ dev-версий на beta ==="
     # В режиме beta мы обновляем все переданные пакеты до указанных beta-версий
-    while [[ $# -gt 0 ]]; do
+    while [[ $# -ge 2 ]]; do
         update_pkg "$1" "$2"
         shift 2
     done
+    if [[ $# -eq 1 ]]; then
+        echo "Ошибка: пропущена версия для пакета $1" >&2
+        exit 1
+    fi
 else
     echo "=== Режим stable: замена beta-версий указанных пакетов на stable ==="
-    while [[ $# -gt 0 ]]; do
+    while [[ $# -ge 2 ]]; do
         update_pkg "$1" "$2"
         shift 2
     done
+    if [[ $# -eq 1 ]]; then
+        echo "Ошибка: пропущена версия для пакета $1" >&2
+        exit 1
+    fi
 fi
 
 # Очищаем go.sum, кэш модулей и генерируем заново

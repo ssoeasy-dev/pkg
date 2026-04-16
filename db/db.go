@@ -65,7 +65,10 @@ func (d *DB) Ping() error {
 func (d *DB) Close() error {
 	sqlDB, err := d.Conn.DB()
 	if err != nil {
-		return err
+		return errors.NewWrap(errors.ErrInternal, err, "failed to get database instance for closing")
 	}
-	return sqlDB.Close()
+	if err := sqlDB.Close(); err != nil {
+		return errors.NewWrap(errors.ErrInternal, err, "failed to close database connection")
+	}
+	return nil
 }

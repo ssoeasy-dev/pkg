@@ -23,7 +23,7 @@ if [ -z "$COMMITS" ]; then
 fi
 
 # Экранируем специальные символы в имени пакета для безопасного использования в regex
-ESC_PKG=$(printf '%s' "$PKG" | sed -E 's/([][.^$*+?{}|()\\])/\\\1/g')
+ESC_PKG=$(printf '%s' "$PKG" | sed 's/[.[\*^$()+?{|]/\\&/g')
 
 # Определяем тип bump
 BUMP_TYPE="patch"

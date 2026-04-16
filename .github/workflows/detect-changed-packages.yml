@@ -42,7 +42,7 @@ jobs:
       - name: List all packages
         id: list
         run: |
-          ALL_PKGS=$(bash scripts/list-packages.sh --json)
+          ALL_PKGS="$(bash scripts/list-packages.sh --json)"
           echo "all=$ALL_PKGS" >> "$GITHUB_OUTPUT"
 
       - name: Detect changed packages

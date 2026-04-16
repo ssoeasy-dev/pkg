@@ -37,7 +37,8 @@ jobs:
         id: plan
         run: |
           CHANGED='${{ needs.detect.outputs.packages }}'
-          PLAN=$(bash ./scripts/build-release-plan.sh $(echo "$CHANGED" | jq -r '.[]'))
+          mapfile -t pkgs < <(echo "$CHANGED" | jq -r '.[]')
+          PLAN=$(bash ./scripts/build-release-plan.sh "${pkgs[@]}")
           echo "plan=$PLAN" >> "$GITHUB_OUTPUT"
           echo "Release plan: $PLAN"
 
@@ -46,6 +47,9 @@ jobs:
         run: |
           PLAN='${{ steps.plan.outputs.plan }}'
           LEVELS=$(echo "$PLAN" | jq -c '.[]')
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
           declare -A STABLE_VERSIONS
 
@@ -61,7 +65,7 @@ jobs:
                 continue
               fi
 
-              BASE_VERSION="${LAST_BETA#${pkg}/v}"
+              BASE_VERSION="${LAST_BETA#"$pkg"/v}"
               BASE_VERSION="${BASE_VERSION%-beta.*}"
 
               LAST_STABLE=$(git tag -l "${pkg}/v*" | grep -E "^${pkg}/v[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -n1)
@@ -77,8 +81,6 @@ jobs:
               STABLE_VERSIONS[$pkg]="$BASE_VERSION"
 
               echo "Creating stable tag: $TAG"
-              git config user.name "github-actions[bot]"
-              git config user.email "github-actions[bot]@users.noreply.github.com"
               git tag -a "$TAG" -m "Release $pkg $BASE_VERSION"
               git push origin "$TAG"
             done

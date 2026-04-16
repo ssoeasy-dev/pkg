@@ -4,6 +4,10 @@ on:
   push:
     branches: [develop]
 
+concurrency:
+  group: beta-version-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   detect:
     name: Detect Changed Packages
@@ -38,7 +42,8 @@ jobs:
         id: plan
         run: |
           CHANGED='${{ needs.detect.outputs.packages }}'
-          PLAN=$(bash ./scripts/build-release-plan.sh $(echo "$CHANGED" | jq -r '.[]'))
+          mapfile -t pkgs < <(echo "$CHANGED" | jq -r '.[]')
+          PLAN=$(bash ./scripts/build-release-plan.sh "${pkgs[@]}")
           echo "plan=$PLAN" >> "$GITHUB_OUTPUT"
           echo "Release plan: $PLAN"
 
@@ -46,6 +51,9 @@ jobs:
         run: |
           PLAN='${{ steps.plan.outputs.plan }}'
           LEVELS=$(echo "$PLAN" | jq -c '.[]')
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
           declare -A BETA_VERSIONS
 
@@ -68,8 +76,6 @@ jobs:
               BETA_VERSIONS[$pkg]="$VERSION"
 
               echo "Creating beta tag: $TAG"
-              git config user.name "github-actions[bot]"
-              git config user.email "github-actions[bot]@users.noreply.github.com"
               git tag -a "$TAG" -m "Beta version for $pkg"
               git push origin "$TAG"
             done

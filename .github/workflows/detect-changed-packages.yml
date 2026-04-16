@@ -72,4 +72,4 @@ jobs:
           else
             JSON=$(printf '%s\n' "${CHANGED[@]}" | jq -R . | jq -s -c .)
           fi
-          echo "packages=$JSON" >> $GITHUB_OUTPUT
+          echo "packages=$JSON" >> "$GITHUB_OUTPUT"

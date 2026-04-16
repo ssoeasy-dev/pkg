@@ -252,7 +252,6 @@ func TestFullError(t *testing.T) {
 	})
 
 	t.Run("nil", func(t *testing.T) {
-		// FullError(nil) вызывает панику, так как err.Error() для nil недопустим.
 		// FullError(nil) возвращает пустую строку для безопасного логирования.
 		if got := FullError(nil); got != "" {
 			t.Errorf("FullError(nil) = %q, want empty string", got)

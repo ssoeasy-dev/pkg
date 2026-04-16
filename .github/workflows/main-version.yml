@@ -70,7 +70,7 @@ jobs:
 
               LAST_STABLE=$(git tag -l "${pkg}/v*" | grep -E "^${pkg}/v[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -n1)
               if [ -n "$LAST_STABLE" ]; then
-                STABLE_VER="${LAST_STABLE#${pkg}/v}"
+                STABLE_VER="${LAST_STABLE#"$pkg"/v}"
                 if [ "$(printf '%s\n' "$STABLE_VER" "$BASE_VERSION" | sort -V | tail -n1)" = "$STABLE_VER" ]; then
                   echo "Stable version $STABLE_VER is already >= $BASE_VERSION, skipping."
                   continue

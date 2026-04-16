@@ -158,13 +158,11 @@ func Kind(err error) error {
 	var e *Error
 	if errors.As(err, &e) {
 		if e.kind == nil && e.next != nil {
-			if k := e.Kind(); k != nil {
-				return k
-			}
-			// Если kind == nil и next == nil, возвращаем ErrUnknown как безопасное значение
-			return ErrUnknown
+			return Kind(e.next)
 		}
-		return e.Kind()
+		if e.kind != nil {
+			return e.kind
+		}
 	}
 	return ErrUnknown
 }

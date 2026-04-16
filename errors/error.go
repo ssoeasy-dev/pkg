@@ -160,7 +160,9 @@ func Kind(err error) error {
 		if e.kind == nil && e.next != nil {
 			return Kind(e.next)
 		}
-		return e.Kind()
+		if e.kind != nil {
+			return e.kind
+		}
 	}
 	return ErrUnknown
 }

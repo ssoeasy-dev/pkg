@@ -54,7 +54,7 @@ gormDB := database.Conn
 ```go
 import "github.com/ssoeasy-dev/pkg/db/tx"
 
-txManager := tx.NewTxManager(gormDB)
+txManager := tx.NewTxManager(gormDB, log)
 
 // commit при nil, rollback при ошибке
 err := txManager.WithTransaction(ctx, func(ctx context.Context) error {

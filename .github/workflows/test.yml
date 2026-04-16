@@ -18,7 +18,7 @@ jobs:
         id: list
         run: |
           PKGS=$(bash scripts/list-packages.sh --json)
-          echo "packages=$PKGS" >> $GITHUB_OUTPUT
+          echo "packages=$PKGS" >> "$GITHUB_OUTPUT"
 
   test:
     needs: list-packages
@@ -56,9 +56,6 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
-
-      - name: Clean module cache
-        run: go clean -modcache
 
       - name: Download dependencies
         working-directory: ${{ matrix.package }}

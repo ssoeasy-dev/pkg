@@ -39,7 +39,7 @@ jobs:
         run: |
           CHANGED='${{ needs.detect.outputs.packages }}'
           PLAN=$(bash ./scripts/build-release-plan.sh $(echo "$CHANGED" | jq -r '.[]'))
-          echo "plan=$PLAN" >> $GITHUB_OUTPUT
+          echo "plan=$PLAN" >> "$GITHUB_OUTPUT"
           echo "Release plan: $PLAN"
 
       - name: Execute release plan

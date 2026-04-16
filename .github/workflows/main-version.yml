@@ -38,7 +38,7 @@ jobs:
         run: |
           CHANGED='${{ needs.detect.outputs.packages }}'
           PLAN=$(bash ./scripts/build-release-plan.sh $(echo "$CHANGED" | jq -r '.[]'))
-          echo "plan=$PLAN" >> $GITHUB_OUTPUT
+          echo "plan=$PLAN" >> "$GITHUB_OUTPUT"
           echo "Release plan: $PLAN"
 
       - name: Execute release plan
@@ -106,6 +106,10 @@ jobs:
           for pkg in $(echo '${{ needs.detect.outputs.packages }}' | jq -r '.[]'); do
             LAST_STABLE=$(git tag -l "${pkg}/v*" | grep -E "^${pkg}/v[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -n2 | head -n1)
             NEW_STABLE=$(git tag -l "${pkg}/v*" | grep -E "^${pkg}/v[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -n1)
+            if [ -z "$NEW_STABLE" ]; then
+              echo "No stable tag found for $pkg, skipping changelog generation."
+              continue
+            fi
             if [ -z "$LAST_STABLE" ]; then
               RANGE="$NEW_STABLE"
             else
@@ -135,8 +139,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Cleanup beta tags
-        if: always()
+        if: success()
         run: |
-          for pkg in $(echo '${{ needs.detect.outputs.packages }}' | jq -r '.[]'); do
+          source stable_versions.env
+          # STABLE_VERSIONS - ассоциативный массив, ключи - имена пакетов, значения - версии
+          for pkg in "${!STABLE_VERSIONS[@]}"; do
+            echo "Cleaning beta tags for $pkg"
             bash scripts/cleanup-tags.sh "$pkg" beta
           done

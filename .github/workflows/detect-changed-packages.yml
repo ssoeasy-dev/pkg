@@ -37,13 +37,13 @@ jobs:
             git fetch origin "$FALLBACK" --depth=1 || true
             BASE=$(git merge-base "origin/$FALLBACK" "$HEAD" 2>/dev/null || echo "origin/$FALLBACK")
           fi
-          echo "base=$BASE" >> $GITHUB_OUTPUT
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
 
       - name: List all packages
         id: list
         run: |
           ALL_PKGS=$(bash scripts/list-packages.sh --json)
-          echo "all=$ALL_PKGS" >> $GITHUB_OUTPUT
+          echo "all=$ALL_PKGS" >> "$GITHUB_OUTPUT"
 
       - name: Detect changed packages
         id: changed
@@ -52,9 +52,17 @@ jobs:
           BASE="${{ steps.base.outputs.base }}"
           HEAD="${{ inputs.head-ref }}"
 
+          # Для pull_request берём общего предка, чтобы отсечь изменения из целевой ветки
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            COMPARE_BASE=$(git merge-base "$BASE" "$HEAD")
+          else
+            COMPARE_BASE="$BASE"
+          fi
+          echo "Compare base: $COMPARE_BASE"
+
           CHANGED=()
           for pkg in $(echo "$ALL_PKGS" | jq -r '.[]'); do
-            if git diff --name-only "$BASE" "$HEAD" | grep -q "^${pkg}/"; then
+            if git diff --name-only "$COMPARE_BASE" "$HEAD" | grep -q "^${pkg}/"; then
               CHANGED+=("$pkg")
             fi
           done

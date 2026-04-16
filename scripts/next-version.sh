@@ -10,7 +10,7 @@ if [ -z "$LAST_STABLE" ]; then
   CURRENT_VERSION="0.0.0"
   START_REF=$(git rev-list --max-parents=0 HEAD)
 else
-  CURRENT_VERSION="${LAST_STABLE#${PKG}/v}"
+  CURRENT_VERSION="${LAST_STABLE#"$PKG"/v}"
   START_REF="$LAST_STABLE"
 fi
 

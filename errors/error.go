@@ -25,7 +25,7 @@ type Error struct {
 // Корневая ошибка (next == nil) отдаёт только строку вида.
 func (e *Error) Error() string {
 	if e.next == nil {
-		return e.kind.Error()
+		return Kind(e).Error()
 	}
 	var nextErr *Error
 	if errors.As(e.next, &nextErr) {
@@ -37,7 +37,7 @@ func (e *Error) Error() string {
 	}
 	// Если next — обычная ошибка и msg пустое, возвращаем только вид
 	if e.msg == "" {
-		return e.kind.Error()
+		return Kind(e).Error()
 	}
 	return e.msg
 }
@@ -61,7 +61,7 @@ func (e *Error) Kind() error {
 func (e *Error) FullError() string {
 	if e.next == nil {
 		if e.msg == "" {
-			return e.kind.Error()
+			return Kind(e).Error()
 		}
 		return e.msg
 	}
@@ -180,8 +180,7 @@ func As(err error, target any) bool {
 // Unwrap возвращает следующую ошибку в цепочке.
 // Работает как с ошибками пакета, так и с обычными.
 func Unwrap(err error) error {
-	var e *Error
-	if errors.As(err, &e) {
+	if e, ok := err.(*Error); ok {
 		return e.Unwrap()
 	}
 	return errors.Unwrap(err)
@@ -190,8 +189,7 @@ func Unwrap(err error) error {
 // FullError возвращает полную строку ошибки с техническими деталями.
 // Используйте только для логирования.
 func FullError(err error) string {
-	var e *Error
-	if errors.As(err, &e) {
+	if e, ok := err.(*Error); ok {
 		return e.FullError()
 	}
 	return err.Error()
